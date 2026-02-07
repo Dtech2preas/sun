@@ -1,125 +1,262 @@
 /**
- * 🚀 D-TECH GLOBAL ROUTER V5.2
+ * 🚀 D-TECH GLOBAL ROUTER V6.0 (Simplified)
  * LOCATION: Cloudflare Worker
  */
-
-const VM_BASE_URL = "http://35.209.78.254"; 
-const HARDCODED_SECRET = "dtech_super_secret_key_2025"; 
 
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const domain = url.hostname; 
-
-    // Parse Subdomain (Correctly handling .co.za)
-    const ROOT_DOMAIN = "account-login.co.za";
+    const ROOT_DOMAIN = "account-login.co.za"; // Ensure this matches your actual domain
     let subdomain = null;
 
-    // If it's NOT the root domain, but ends with it, extract subdomain
+    // --- 1. ADMIN PANEL & API ---
+    // Access the Admin Panel at /admin on the root domain or any subdomain
+    if (url.pathname === '/admin') {
+      return new Response(renderAdminPanel(), {
+        headers: { 'Content-Type': 'text/html' }
+      });
+    }
+
+    // Handle API requests from the Admin Panel
+    if (url.pathname === '/api/save' && request.method === 'POST') {
+      return handleSaveRequest(request, env);
+    }
+
+    // --- 2. SUBDOMAIN ROUTING ---
+
+    // Parse Subdomain
     if (domain !== ROOT_DOMAIN && domain.endsWith("." + ROOT_DOMAIN)) {
-        // Remove .account-login.co.za from the end
         subdomain = domain.slice(0, - (ROOT_DOMAIN.length + 1));
     }
 
-    // 1. INTERNAL API: MANAGE USERS
-    if (url.pathname === '/api/worker/manage' && request.method === 'POST') {
-      return handleApiRequest(request, env);
-    }
-
-    // 2. ROUTING LOGIC (User Traffic)
+    // If no subdomain (or 'www'), serve a default page or 404
     if (!subdomain || subdomain === 'www') {
-       // Fetch VM Home directly, explicitly setting Host header to IP to avoid 1003
-       return fetch(VM_BASE_URL, {
-         headers: { 'Host': '35.209.78.254' }
+       return new Response("<h1>Welcome to D-TECH Cloud</h1><p>Visit <a href='/admin'>/admin</a> to manage subdomains.</p>", {
+         headers: { 'Content-Type': 'text/html' }
        });
     }
 
-    // Lookup User in KV (Requires 'SUBDOMAINS' binding to KV 'DTECH_DB')
+    // Lookup Subdomain in KV
+    // Requires 'SUBDOMAINS' binding to KV namespace
     const data = await env.SUBDOMAINS.get(subdomain, { type: "json" });
 
     if (!data) {
       return new Response(render404(subdomain), { status: 404, headers: { 'Content-Type': 'text/html' } });
     }
 
-    if (data.type === 'REDIRECT') return Response.redirect(data.target, 301);
+    // --- 3. SERVE CONTENT ---
 
     if (data.type === 'HTML') {
-      try {
-        // Fetch directly from IP, explicit Host header
-        const vmResponse = await fetch(`${VM_BASE_URL}/storage/${subdomain}`, {
-            headers: { 'Host': '35.209.78.254' }
-        });
-
-        if (vmResponse.status === 404) {
-             return new Response("<h1>Site Not Found</h1>", { status: 404, headers: {'Content-Type': 'text/html'} });
-        }
-
-        if (vmResponse.status !== 200) {
-             return new Response("<h1>Error: Hosting Node Offline</h1>", { status: 502, headers: {'Content-Type': 'text/html'} });
-        }
-
-        return new Response(vmResponse.body, { headers: { 'Content-Type': 'text/html' } });
-      } catch (err) {
-        return new Response("<h1>Error: Hosting Node Offline</h1>", { status: 503, headers: {'Content-Type': 'text/html'} });
-      }
+      // Serve stored HTML directly
+      return new Response(data.content, {
+        headers: { 'Content-Type': 'text/html' }
+      });
     }
 
     if (data.type === 'PROXY') {
-      let targetUrl = data.target.endsWith('/') ? data.target.slice(0, -1) : data.target;
-      const originalResponse = await fetch(targetUrl + url.pathname + url.search, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (D-TECH Cloud)' }
-      });
-      let response = new Response(originalResponse.body, { status: originalResponse.status, headers: originalResponse.headers });
-      if (data.plan !== 'PRO') return new HTMLRewriter().on('body', new BannerInjector()).transform(response);
-      return response;
+      // Fetch content from the target URL (Reverse Proxy)
+      try {
+        const targetUrl = data.content;
+
+        // Prepare the request to the target
+        // We generally want to forward the path and query string
+        const forwardUrl = new URL(targetUrl);
+        forwardUrl.pathname = url.pathname === '/' ? forwardUrl.pathname : url.pathname;
+        forwardUrl.search = url.search;
+
+        const proxyResponse = await fetch(forwardUrl.toString(), {
+          headers: {
+            'User-Agent': request.headers.get('User-Agent') || 'D-TECH Cloud Proxy',
+            // Do NOT forward the original Host header, let fetch set it to the target's host
+          }
+        });
+
+        // Create a new response to modify headers if needed (e.g. CORS)
+        const response = new Response(proxyResponse.body, proxyResponse);
+        // You might need to rewrite links in the HTML here if they are absolute,
+        // but for now we just proxy the content.
+        return response;
+
+      } catch (err) {
+        return new Response(`<h1>Proxy Error</h1><p>${err.message}</p>`, { status: 502, headers: {'Content-Type': 'text/html'} });
+      }
     }
 
-    return new Response("Configuration Error", { status: 500 });
+    return new Response("Configuration Error: Unknown Type", { status: 500 });
   }
 };
 
-async function handleApiRequest(request, env) {
-  const secret = request.headers.get('X-Auth');
-  const API_KEY = env.API_SECRET || HARDCODED_SECRET; 
-  if (secret !== API_KEY) return new Response(JSON.stringify({error: "Unauthorized"}), {status: 401});
+// --- HELPER FUNCTIONS ---
 
-  const body = await request.json();
-  const { action, subdomain, type, target, plan, html } = body;
+async function handleSaveRequest(request, env) {
+  try {
+    const body = await request.json();
+    const { subdomain, type, content } = body;
 
-  if (!subdomain) return new Response("Missing subdomain", {status: 400});
-  if (action === 'DELETE') {
-    await env.SUBDOMAINS.delete(subdomain);
-    return new Response(JSON.stringify({status: "Deleted", subdomain}), {status: 200});
-  }
-
-  if (action === 'SET') {
-    if (type === 'HTML' && html) {
-      try {
-        const vmResponse = await fetch(`${VM_BASE_URL}/api/create`, {
-          method: "POST",
-          headers: {
-            "Host": "35.209.78.254", // Explicit Host Header
-            "Content-Type": "application/json",
-            "X-DTECH-SECRET": HARDCODED_SECRET,
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" // Fake UA
-          },
-          body: JSON.stringify({ subdomain: subdomain, html: html })
-        });
-
-        if (vmResponse.status !== 200) {
-           const errorText = await vmResponse.text();
-           return new Response(JSON.stringify({ error: `VM Failed: ${vmResponse.status} - ${errorText}` }), {status: 500});
-        }
-      } catch (err) {
-        return new Response(JSON.stringify({error: "VM Connection Failed: " + err.message}), {status: 500});
-      }
+    if (!subdomain || !type || !content) {
+      return new Response(JSON.stringify({ success: false, error: "Missing fields" }), { status: 400 });
     }
-    const entry = { type: type || 'REDIRECT', target: target || '', plan: plan || 'FREE', created: Date.now() };
+
+    const entry = {
+      type: type, // 'HTML' or 'PROXY'
+      content: content,
+      updated: Date.now()
+    };
+
     await env.SUBDOMAINS.put(subdomain, JSON.stringify(entry));
-    return new Response(JSON.stringify({status: "Active", data: entry}), {status: 200});
+
+    return new Response(JSON.stringify({ success: true, subdomain, type }), {
+      headers: { 'Content-Type': 'application/json' }
+    });
+  } catch (err) {
+    return new Response(JSON.stringify({ success: false, error: err.message }), { status: 500 });
   }
-  return new Response("Unknown Action", {status: 400});
 }
 
-class BannerInjector { element(element) { element.prepend(`<div style="background:#000;color:#fff;text-align:center;">🚀 Hosted by D-TECH Cloud</div>`, { html: true }); } }
-function render404(subdomain) { return `<html><body style="text-align:center;"><h1>Subdomain Not Found</h1></body></html>`; }
+function render404(subdomain) {
+  return `<html><body style="text-align:center; font-family: sans-serif; padding: 50px;">
+    <h1>404 - Subdomain Not Found</h1>
+    <p>The subdomain <strong>${subdomain}</strong> is not configured.</p>
+  </body></html>`;
+}
+
+function renderAdminPanel() {
+  return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>D-TECH Cloud Admin</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f4f4f9; color: #333; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { margin-top: 0; color: #0070f3; }
+        .form-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="text"], textarea, select { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-size: 16px; }
+        textarea { height: 150px; font-family: monospace; }
+        button { background: #0070f3; color: #fff; border: none; padding: 12px 20px; border-radius: 4px; cursor: pointer; font-size: 16px; width: 100%; }
+        button:hover { background: #005bb5; }
+        .tabs { display: flex; margin-bottom: 20px; border-bottom: 2px solid #eee; }
+        .tab { padding: 10px 20px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; }
+        .tab.active { border-bottom-color: #0070f3; color: #0070f3; font-weight: bold; }
+        .hidden { display: none; }
+        #message { margin-top: 20px; padding: 10px; border-radius: 4px; display: none; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Cloud Admin Panel</h1>
+
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('html')">Deploy HTML</div>
+            <div class="tab" onclick="switchTab('proxy')">Deploy Proxy</div>
+        </div>
+
+        <!-- HTML Form -->
+        <div id="html-form" class="form-section">
+            <div class="form-group">
+                <label>Subdomain</label>
+                <input type="text" id="html-subdomain" placeholder="e.g., mysite">
+            </div>
+            <div class="form-group">
+                <label>HTML Content</label>
+                <textarea id="html-content" placeholder="<html><body><h1>Hello World</h1></body></html>"></textarea>
+            </div>
+            <button onclick="save('HTML')">Deploy Site</button>
+        </div>
+
+        <!-- Proxy Form -->
+        <div id="proxy-form" class="form-section hidden">
+            <div class="form-group">
+                <label>Subdomain</label>
+                <input type="text" id="proxy-subdomain" placeholder="e.g., blog">
+            </div>
+            <div class="form-group">
+                <label>Target URL</label>
+                <input type="text" id="proxy-url" placeholder="https://example.com">
+            </div>
+            <button onclick="save('PROXY')">Create Proxy</button>
+        </div>
+
+        <div id="message"></div>
+    </div>
+
+    <script>
+        function switchTab(tab) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.form-section').forEach(f => f.classList.add('hidden'));
+
+            if (tab === 'html') {
+                document.querySelector('.tabs .tab:nth-child(1)').classList.add('active');
+                document.getElementById('html-form').classList.remove('hidden');
+            } else {
+                document.querySelector('.tabs .tab:nth-child(2)').classList.add('active');
+                document.getElementById('proxy-form').classList.remove('hidden');
+            }
+        }
+
+        async function save(type) {
+            const btn = document.querySelector('button');
+            const originalText = btn.innerText;
+            btn.innerText = 'Saving...';
+            btn.disabled = true;
+
+            const messageEl = document.getElementById('message');
+            messageEl.style.display = 'none';
+            messageEl.className = '';
+
+            let subdomain, content;
+
+            if (type === 'HTML') {
+                subdomain = document.getElementById('html-subdomain').value;
+                content = document.getElementById('html-content').value;
+            } else {
+                subdomain = document.getElementById('proxy-subdomain').value;
+                content = document.getElementById('proxy-url').value;
+            }
+
+            if (!subdomain || !content) {
+                showMessage('Please fill in all fields.', 'error');
+                btn.innerText = originalText;
+                btn.disabled = false;
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ subdomain, type, content })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showMessage(\`Success! \${subdomain}.account-login.co.za is now active.\`, 'success');
+                } else {
+                    showMessage('Error: ' + result.error, 'error');
+                }
+            } catch (err) {
+                showMessage('Network Error: ' + err.message, 'error');
+            }
+
+            btn.innerText = originalText;
+            btn.disabled = false;
+        }
+
+        function showMessage(text, type) {
+            const el = document.getElementById('message');
+            el.innerText = text;
+            el.className = type;
+            el.style.display = 'block';
+        }
+    </script>
+</body>
+</html>
+  `;
+}
