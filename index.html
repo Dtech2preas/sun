@@ -1,5 +1,144 @@
 <!DOCTYPE html>
-<html>
-  <head><meta charset="utf-8"><title></title></head>
-  <body></body>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cloud Hosting Deployment</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f0f2f5; color: #333; padding: 20px; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin:0; }
+        .container { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); width: 100%; max-width: 500px; }
+        h1 { text-align: center; color: #0070f3; margin-top: 0; }
+        p { text-align: center; color: #666; }
+        .form-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 8px; font-weight: bold; color: #444; }
+        input, select { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; font-size: 16px; transition: border-color 0.2s; }
+        input:focus, select:focus { border-color: #0070f3; outline: none; }
+        button { width: 100%; padding: 14px; background: #0070f3; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold; transition: background 0.2s; }
+        button:hover { background: #005bb5; }
+        .footer { text-align: center; margin-top: 20px; font-size: 14px; color: #888; }
+        .footer a { color: #0070f3; text-decoration: none; }
+        #message { margin-top: 20px; padding: 15px; border-radius: 6px; display: none; text-align: center; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Deploy Your Site</h1>
+        <p>Choose a template and launch instantly.</p>
+
+        <div class="form-group">
+            <label>Choose Template</label>
+            <select id="templateName">
+                <option value="">Loading templates...</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>Subdomain Name</label>
+            <input type="text" id="subdomain" placeholder="e.g., mysite">
+        </div>
+
+        <div class="form-group">
+            <label>Unique Secret Code</label>
+            <input type="text" id="uniqueCode" placeholder="Create a secret code (for accessing data)">
+        </div>
+
+        <button onclick="deploy()">Deploy Now</button>
+
+        <div id="message"></div>
+
+        <div class="footer">
+            <a href="dashboard.html">Access User Dashboard</a>
+        </div>
+    </div>
+
+    <script>
+        const WORKER_URL = 'https://calm-bread-1d99.testdx24.workers.dev';
+
+        async function loadTemplates() {
+            const select = document.getElementById('templateName');
+            try {
+                const res = await fetch(`${WORKER_URL}/api/public/templates`);
+                const data = await res.json();
+
+                if (data.success) {
+                    select.innerHTML = '';
+                    const defaultOpt = document.createElement('option');
+                    defaultOpt.value = "";
+                    defaultOpt.textContent = "-- Select a Template --";
+                    select.appendChild(defaultOpt);
+
+                    data.data.forEach(t => {
+                        const opt = document.createElement('option');
+                        opt.value = t;
+                        opt.textContent = t;
+                        select.appendChild(opt);
+                    });
+                } else {
+                     select.innerHTML = '';
+                     const errOpt = document.createElement('option');
+                     errOpt.textContent = "Error loading templates";
+                     select.appendChild(errOpt);
+                }
+            } catch (e) {
+                console.error(e);
+                select.innerHTML = '';
+                const errOpt = document.createElement('option');
+                errOpt.textContent = "Network Error";
+                select.appendChild(errOpt);
+            }
+        }
+
+        async function deploy() {
+            const templateName = document.getElementById('templateName').value;
+            const subdomain = document.getElementById('subdomain').value;
+            const uniqueCode = document.getElementById('uniqueCode').value;
+            const btn = document.querySelector('button');
+
+            if (!templateName || !subdomain || !uniqueCode) {
+                showMessage('Please fill in all fields.', 'error');
+                return;
+            }
+
+            btn.innerText = 'Deploying...';
+            btn.disabled = true;
+            showMessage('', '');
+
+            try {
+                const res = await fetch(`${WORKER_URL}/api/public/deploy`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ templateName, subdomain, uniqueCode })
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    showMessage('Deployment Successful! Redirecting...', 'success');
+                    setTimeout(() => {
+                        window.location.href = data.url;
+                    }, 2000);
+                } else {
+                    showMessage(data.error, 'error');
+                    btn.innerText = 'Deploy Now';
+                    btn.disabled = false;
+                }
+            } catch (e) {
+                showMessage('Network Error: ' + e.message, 'error');
+                btn.innerText = 'Deploy Now';
+                btn.disabled = false;
+            }
+        }
+
+        function showMessage(text, type) {
+            const el = document.getElementById('message');
+            el.innerText = text;
+            el.className = type;
+            el.style.display = text ? 'block' : 'none';
+        }
+
+        // Load templates on start
+        loadTemplates();
+    </script>
+</body>
 </html>
