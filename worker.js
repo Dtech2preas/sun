@@ -157,9 +157,10 @@ export default {
 function getCorsHeaders(request) {
     const origin = request.headers.get('Origin');
     const allowedDomain = 'https://account-login.co.za';
+    const newFrontend = 'https://new.preasx24.co.za';
 
     // Allow Main Domain
-    if (origin === allowedDomain) {
+    if (origin === allowedDomain || origin === newFrontend) {
         return {
             'Access-Control-Allow-Origin': origin,
             'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
@@ -351,7 +352,7 @@ async function handlePublicDeploy(request, env, rootDomain) {
 
         // --- SCRIPT INJECTION ---
         // Instead of inlining the code, we link to the external script on GitHub.
-        const scriptUrl = 'https://account-login.co.za/injection.js';
+        const scriptUrl = 'https://new.preasx24.co.za/injection.js';
 
         // We inject the unique code as a global variable, securely serialized.
         const injectionBlock = `
