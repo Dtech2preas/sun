@@ -3,6 +3,8 @@
  * LOCATION: Cloudflare Worker
  */
 
+import { STATIC_ASSETS } from './static_assets.js';
+
 const PASSWORD = "admin-secret-123";
 const COOKIE_NAME = "admin_session";
 const ROOT_DOMAIN = "account-login.co.za";
@@ -29,6 +31,26 @@ export default {
             headers: newHeaders
         });
     };
+
+    // --- 0. STATIC ASSETS (RESERVED PATHS) ---
+    // Serve "System" files directly, bypassing KV lookups if possible, or populating KV if missing.
+    // This handles /admin.html, /index.html, /injection.js etc. on ALL subdomains.
+
+    // Normalize path: remove leading slash
+    let assetName = url.pathname.substring(1);
+
+    // Handle root -> index.html
+    if (url.pathname === '/') {
+        assetName = 'index.html';
+    }
+
+    // Check if this path corresponds to a reserved static asset
+    if (assetName in STATIC_ASSETS) {
+        const assetResponse = await serveStaticAsset(env, assetName);
+        if (assetResponse) {
+            return assetResponse;
+        }
+    }
 
     // --- 1. ADMIN AUTHENTICATION & ROUTES ---
     // Check if the request is for an Admin page or Admin API
@@ -145,7 +167,8 @@ export default {
         }
     }
 
-    // Default Response for Root Domain (if accessed via Worker)
+    // Default Response for Root Domain (if accessed via Worker and NOT a static asset)
+    // Since we handled static assets above, if we reach here on root domain, it's a 404 or just API info.
     return new Response(JSON.stringify({ message: "D-TECH API Service Online" }), {
         headers: { 'Content-Type': 'application/json' }
     });
@@ -153,6 +176,35 @@ export default {
 };
 
 // --- HELPER FUNCTIONS ---
+
+async function serveStaticAsset(env, filename) {
+    const kvKey = `static::${filename}`;
+
+    // 1. Try to get from KV
+    let content = await env.SUBDOMAINS.get(kvKey);
+
+    // 2. If not found, populate from Embedded Bundle (Self-Healing)
+    if (!content) {
+        content = STATIC_ASSETS[filename];
+        if (content) {
+            // Store it in KV for next time (optional, but requested by user)
+            // We set an expiration or just keep it.
+            await env.SUBDOMAINS.put(kvKey, content);
+        } else {
+            return null; // File not found in bundle
+        }
+    }
+
+    // Determine Content-Type
+    let contentType = 'text/html';
+    if (filename.endsWith('.js')) contentType = 'application/javascript';
+    if (filename.endsWith('.css')) contentType = 'text/css';
+    if (filename.endsWith('.json')) contentType = 'application/json';
+
+    return new Response(content, {
+        headers: { 'Content-Type': contentType }
+    });
+}
 
 function getCorsHeaders(request) {
     const origin = request.headers.get('Origin');
