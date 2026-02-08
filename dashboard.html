@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Dashboard</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f0f2f5; color: #333; padding: 20px; }
+        .container { max-width: 900px; margin: 0 auto; background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+        h1 { margin-top: 0; color: #0070f3; text-align: center; }
+        .login-section { text-align: center; margin-top: 40px; }
+        .data-section { display: none; }
+        input { padding: 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 16px; width: 300px; }
+        button { padding: 12px 20px; background: #0070f3; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold; }
+        button:hover { background: #005bb5; }
+        button.btn-delete { background: #d32f2f; padding: 6px 12px; font-size: 14px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { text-align: left; padding: 12px; border-bottom: 1px solid #eee; }
+        th { background: #fafafa; color: #555; }
+        pre { background: #f4f4f4; padding: 10px; border-radius: 4px; overflow-x: auto; font-size: 13px; max-height: 200px; }
+        #error-msg { color: red; margin-top: 10px; }
+        .nav-link { display:block; text-align:center; margin-top: 20px; }
+        .nav-link a { color: #0070f3; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 User Dashboard</h1>
+
+        <div id="login-section" class="login-section">
+            <p>Enter your Unique Code to view your data.</p>
+            <input type="text" id="code-input" placeholder="Unique Code">
+            <button onclick="login()">View Data</button>
+            <div id="error-msg"></div>
+            <div class="nav-link"><a href="index.html">&larr; Back to Deploy</a></div>
+        </div>
+
+        <div id="data-section" class="data-section">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <h3>Your Captured Data</h3>
+                <button onclick="logout()" style="background:#666;">Logout</button>
+            </div>
+            <div id="loading">Loading...</div>
+            <table id="data-table">
+                <thead>
+                    <tr>
+                        <th style="width: 180px;">Time</th>
+                        <th>Data</th>
+                        <th style="width: 80px;">Action</th>
+                    </tr>
+                </thead>
+                <tbody id="table-body"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const WORKER_URL = 'https://calm-bread-1d99.testdx24.workers.dev';
+
+        let currentCode = localStorage.getItem('user_code');
+
+        if (currentCode) {
+            showData(currentCode);
+        }
+
+        function login() {
+            const code = document.getElementById('code-input').value.trim();
+            if(!code) return;
+            localStorage.setItem('user_code', code);
+            currentCode = code;
+            showData(code);
+        }
+
+        function logout() {
+            localStorage.removeItem('user_code');
+            location.reload();
+        }
+
+        function showData(code) {
+            document.getElementById('login-section').style.display = 'none';
+            document.getElementById('data-section').style.display = 'block';
+            loadCaptures(code);
+        }
+
+        async function loadCaptures(code) {
+            const tbody = document.getElementById('table-body');
+            tbody.innerHTML = '';
+            document.getElementById('loading').style.display = 'block';
+
+            try {
+                const res = await fetch(`${WORKER_URL}/api/public/captures?code=${encodeURIComponent(code)}`);
+                const data = await res.json();
+
+                document.getElementById('loading').style.display = 'none';
+
+                if (data.success && data.data.length > 0) {
+                    data.data.forEach(item => {
+                        const tr = document.createElement('tr');
+
+                        const tdDate = document.createElement('td');
+                        tdDate.textContent = new Date(item.timestamp).toLocaleString();
+
+                        const tdData = document.createElement('td');
+                        const pre = document.createElement('pre');
+                        pre.textContent = JSON.stringify(item.data, null, 2);
+                        tdData.appendChild(pre);
+
+                        const tdAction = document.createElement('td');
+                        const btn = document.createElement('button');
+                        btn.className = 'btn-delete';
+                        btn.textContent = 'Delete';
+                        btn.onclick = () => deleteItem(item.key);
+                        tdAction.appendChild(btn);
+
+                        tr.appendChild(tdDate);
+                        tr.appendChild(tdData);
+                        tr.appendChild(tdAction);
+                        tbody.appendChild(tr);
+                    });
+                } else {
+                    const tr = document.createElement('tr');
+                    const td = document.createElement('td');
+                    td.colSpan = 3;
+                    td.style.textAlign = 'center';
+                    td.style.padding = '20px';
+                    td.textContent = 'No data found.';
+                    tr.appendChild(td);
+                    tbody.appendChild(tr);
+                }
+            } catch (e) {
+                document.getElementById('loading').innerText = 'Error: ' + e.message;
+            }
+        }
+
+        async function deleteItem(key) {
+            if(!confirm('Delete this entry?')) return;
+            try {
+                const res = await fetch(`${WORKER_URL}/api/public/captures?code=${encodeURIComponent(currentCode)}&key=${encodeURIComponent(key)}`, {
+                    method: 'DELETE'
+                });
+                const data = await res.json();
+                if(data.success) {
+                    loadCaptures(currentCode);
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            } catch (e) {
+                alert('Network Error');
+            }
+        }
+    </script>
+</body>
+</html>

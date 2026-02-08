@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Login</title>
+    <style>
+        body { font-family: -apple-system, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background: #f4f4f9; margin: 0; }
+        .login-box { background: white; padding: 40px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); width: 300px; }
+        h1 { text-align: center; color: #333; margin-bottom: 20px; }
+        input { width: 100%; padding: 10px; margin-bottom: 15px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
+        button { width: 100%; padding: 10px; background: #0070f3; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
+        button:hover { background: #005bb5; }
+        .error { color: red; text-align: center; margin-bottom: 15px; font-size: 14px; display: none; }
+    </style>
+</head>
+<body>
+    <div class="login-box">
+        <h1>Admin Login</h1>
+        <div id="error-msg" class="error"></div>
+        <form id="login-form">
+            <input type="password" name="password" placeholder="Enter Password" required>
+            <button type="submit">Login</button>
+        </form>
+    </div>
+
+    <script>
+        const WORKER_URL = 'https://calm-bread-1d99.testdx24.workers.dev';
+
+        document.getElementById('login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const errorEl = document.getElementById('error-msg');
+            const btn = e.target.querySelector('button');
+
+            errorEl.style.display = 'none';
+            btn.innerText = 'Logging in...';
+            btn.disabled = true;
+
+            try {
+                const res = await fetch(`${WORKER_URL}/admin/login`, {
+                    method: 'POST',
+                    body: formData,
+                    credentials: 'include'
+                });
+
+                // Check for redirect (some browsers might follow 302 automatically, but we want JSON)
+                // My plan is to make the worker return JSON.
+
+                let data;
+                const contentType = res.headers.get("content-type");
+                if (contentType && contentType.indexOf("application/json") !== -1) {
+                    data = await res.json();
+                } else {
+                    // Fallback if worker sends HTML (shouldn't happen with new plan)
+                    const text = await res.text();
+                    data = { success: false, error: "Unexpected response from server" };
+                }
+
+                if (data.success) {
+                    window.location.href = 'admin.html';
+                } else {
+                    errorEl.innerText = data.error || 'Invalid Password';
+                    errorEl.style.display = 'block';
+                    btn.innerText = 'Login';
+                    btn.disabled = false;
+                }
+
+            } catch (err) {
+                errorEl.innerText = 'Network Error: ' + err.message;
+                errorEl.style.display = 'block';
+                btn.innerText = 'Login';
+                btn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>
