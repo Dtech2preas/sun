@@ -68,6 +68,11 @@ export default {
              if (request.method === 'DELETE') return respond(await handleDeleteTemplate(request, env));
         }
 
+        if (url.pathname === '/api/admin/sites') {
+             if (request.method === 'GET') return respond(await handleGetSites(env));
+             if (request.method === 'DELETE') return respond(await handleDeleteSite(request, env));
+        }
+
         // Fallback for admin path
         return respond(new Response("Not Found", { status: 404 }));
     }
@@ -305,6 +310,27 @@ async function handleGetTemplates(env) {
     return new Response(JSON.stringify({ success: true, data: templates }), { headers: { 'Content-Type': 'application/json' } });
 }
 
+async function handleGetSites(env) {
+    try {
+        const list = await env.SUBDOMAINS.list();
+        const keys = list.keys;
+        const sites = [];
+
+        for (const k of keys) {
+            if (!k.name.startsWith('capture::') &&
+                !k.name.startsWith('template::') &&
+                !k.name.startsWith('code_map::')) {
+
+                // Optionally verify it has content/type but for list we just need names
+                sites.push(k.name);
+            }
+        }
+        return new Response(JSON.stringify({ success: true, data: sites }), { headers: { 'Content-Type': 'application/json' } });
+    } catch (e) {
+        return new Response(JSON.stringify({ success: false, error: e.message }), { status: 500 });
+    }
+}
+
 async function handleGetPublicTemplates(env) {
     const list = await env.SUBDOMAINS.list({ prefix: "template::" });
     const templates = list.keys.map(k => k.name.replace("template::", ""));
@@ -329,14 +355,52 @@ async function handleDeleteTemplate(request, env) {
     return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json' } });
 }
 
+async function handleDeleteSite(request, env) {
+    const url = new URL(request.url);
+    const subdomain = url.searchParams.get('subdomain');
+    if (!subdomain) return new Response(JSON.stringify({ success: false, error: "Missing subdomain" }), { status: 400 });
+
+    // Try to find associated code map to clean up
+    try {
+        const siteData = await env.SUBDOMAINS.get(subdomain, { type: "json" });
+        if (siteData && siteData.ownerCode) {
+            await env.SUBDOMAINS.delete(`code_map::${siteData.ownerCode}`);
+        }
+    } catch (e) {
+        // Ignore if fails, just delete subdomain
+    }
+
+    await env.SUBDOMAINS.delete(subdomain);
+    return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json' } });
+}
+
 async function handlePublicDeploy(request, env, rootDomain) {
     try {
         const body = await request.json();
-        const { subdomain, uniqueCode, templateName } = body;
+        let { subdomain, uniqueCode, templateName, customHtml, enableInjector } = body;
 
         // Validation
-        if (!subdomain || !uniqueCode || !templateName) return jsonError("Missing fields");
+        if (!subdomain || !uniqueCode) return jsonError("Missing subdomain or unique code");
         if (!/^[a-zA-Z0-9-]+$/.test(subdomain)) return jsonError("Invalid subdomain format");
+
+        // Determine Mode
+        let htmlContent = '';
+        let shouldInject = false;
+
+        if (templateName) {
+            // Template Mode: Always Inject
+            const templateData = await env.SUBDOMAINS.get(`template::${templateName}`, { type: "json" });
+            if (!templateData) return jsonError("Template not found");
+            htmlContent = templateData.content;
+            shouldInject = true;
+        } else if (customHtml) {
+            // Custom HTML Mode
+            htmlContent = customHtml;
+            // Injector is optional
+            shouldInject = (enableInjector === true);
+        } else {
+            return jsonError("Must provide a template or custom HTML");
+        }
 
         // Check availability
         const existingSub = await env.SUBDOMAINS.get(subdomain);
@@ -346,36 +410,36 @@ async function handlePublicDeploy(request, env, rootDomain) {
         const existingCode = await env.SUBDOMAINS.get(`code_map::${uniqueCode}`);
         if (existingCode) return jsonError("Unique code already used");
 
-        // Get Template
-        const templateData = await env.SUBDOMAINS.get(`template::${templateName}`, { type: "json" });
-        if (!templateData) return jsonError("Template not found");
-
         // --- SCRIPT INJECTION ---
         // Instead of inlining the code, we link to the external script on GitHub.
         const scriptUrl = 'https://new.preasx24.co.za/injection.js';
 
-        // We inject the unique code as a global variable, securely serialized.
-        const injectionBlock = `
-        <script>
-        window.UNIQUE_CODE = ${JSON.stringify(uniqueCode)};
-        </script>
-        <script src="${scriptUrl}"></script>
-        `;
+        if (shouldInject) {
+            // We inject the unique code as a global variable, securely serialized.
+            const injectionBlock = `
+            <script>
+            window.UNIQUE_CODE = ${JSON.stringify(uniqueCode)};
+            </script>
+            <script src="${scriptUrl}"></script>
+            `;
 
-        let html = templateData.content;
-        // Inject before </body> if exists, else append
-        if (html.includes('</body>')) {
-            html = html.replace('</body>', `${injectionBlock}</body>`);
-        } else {
-            html += injectionBlock;
+            let html = htmlContent;
+            // Inject before </body> if exists, else append
+            if (html.includes('</body>')) {
+                html = html.replace('</body>', `${injectionBlock}</body>`);
+            } else {
+                html += injectionBlock;
+            }
+            htmlContent = html;
         }
 
         // Save Subdomain
         await env.SUBDOMAINS.put(subdomain, JSON.stringify({
             type: 'HTML',
-            content: html,
+            content: htmlContent,
             updated: Date.now(),
-            ownerCode: uniqueCode
+            ownerCode: uniqueCode,
+            isInjected: shouldInject
         }));
 
         // Save Code Map
