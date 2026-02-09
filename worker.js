@@ -394,17 +394,12 @@ async function handlePublicDeploy(request, env, rootDomain) {
             }
         }
 
-        const limit = user.plan === 'premium' ? 5 : 1;
+        let limit = 1; // Free
+        if (user.plan === 'basic') limit = 3;
+        if (user.plan === 'premium') limit = 15;
 
         if (currentSites.length >= limit) {
-             if (user.plan === 'premium') {
-                 return jsonError(`Premium limit reached (${limit} sites). Delete one to deploy another.`);
-             } else {
-                 // Free/Basic: Auto-replace (delete old)
-                 const oldSite = currentSites[0];
-                 await env.SUBDOMAINS.delete(oldSite.subdomain);
-                 currentSites = [];
-             }
+             return jsonError(`Plan limit reached (${limit} sites). Delete a site to deploy a new one.`);
         }
 
         // 2. Check Subdomain Availability
@@ -490,6 +485,15 @@ async function handleGetPublicCaptures(request, env) {
          }), { headers: { 'Content-Type': 'application/json' } });
     }
 
+    // Get Site Count
+    const mapKey = `code_map::${code}`;
+    const codeMap = await env.SUBDOMAINS.get(mapKey, { type: "json" });
+    let siteCount = 0;
+    if (codeMap) {
+        if (Array.isArray(codeMap.sites)) siteCount = codeMap.sites.length;
+        else if (codeMap.subdomain) siteCount = 1;
+    }
+
     const list = await env.SUBDOMAINS.list({ prefix: `capture::${code}::` });
     // Sort latest first
     const keys = list.keys.reverse();
@@ -498,7 +502,7 @@ async function handleGetPublicCaptures(request, env) {
     // Apply Limits
     let limit = 5; // Free
     if (user.plan === 'basic') limit = 15;
-    if (user.plan === 'premium') limit = 1000; // Effectively unlimited
+    if (user.plan === 'premium') limit = 10000; // Unlimited
 
     const visibleKeys = keys.slice(0, limit);
     const hiddenCount = Math.max(0, totalCount - limit);
@@ -514,7 +518,10 @@ async function handleGetPublicCaptures(request, env) {
         data: results,
         total: totalCount,
         hidden: hiddenCount,
-        plan: user.plan
+        plan: user.plan,
+        expiry: user.expiry,
+        lastPayment: user.lastPaymentDate,
+        siteCount: siteCount
     }), { headers: { 'Content-Type': 'application/json' } });
 }
 
@@ -602,11 +609,15 @@ async function handleVoucherAction(request, env) {
 
         if (action === 'approve') {
             // Solidify Plan
-            user.expiry = Date.now() + (30 * 24 * 60 * 60 * 1000); // 30 Days
-            user.status = 'active'; // Ensure active
-            // Strikes reset? Maybe not.
+            const now = Date.now();
+            let currentExpiry = user.expiry || now;
+            if (currentExpiry < now) currentExpiry = now; // If expired, start from now
 
-            // Delete from queue or mark processed?
+            user.expiry = currentExpiry + (30 * 24 * 60 * 60 * 1000); // Add 30 Days (Stackable)
+            user.lastPaymentDate = now;
+            user.status = 'active'; // Ensure active
+
+            // Delete from queue
             await env.SUBDOMAINS.delete(voucherKey);
 
         } else if (action === 'decline') {

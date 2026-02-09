@@ -144,9 +144,11 @@
         <h1>D-TECH CLOUD</h1>
         <p>Enter your Unique Access Code to manage your deployments and view captured data.</p>
 
-        <div class="input-group">
+        <div class="input-group" style="display:flex; gap:10px;">
             <input type="text" id="uniqueCode" placeholder="Paste Your Unique Code Here" autocomplete="off">
+            <button onclick="copyCode()" class="btn btn-secondary" style="width:auto; margin-bottom:0; padding:10px 15px;" title="Copy to Clipboard">📋</button>
         </div>
+        <p id="copy-msg" style="color:#17c964; font-size:12px; margin-top:-15px; margin-bottom:20px; display:none;">Code copied to clipboard!</p>
 
         <button onclick="login()" class="btn btn-primary">Access Dashboard</button>
 
@@ -154,6 +156,9 @@
 
         <p style="margin-bottom: 10px; font-size: 13px;">New user? Generate a secure key.</p>
         <button onclick="generateCode()" class="btn btn-secondary">Generate New Key</button>
+        <p style="color:#f5a524; font-size:12px; margin-top:10px; line-height:1.4;">
+            ⚠️ <strong>IMPORTANT:</strong> Save this code immediately in a secure location! It is the <u>only way</u> to access your account. Lost codes cannot be recovered.
+        </p>
 
         <div class="footer">
             &copy; 2024 D-TECH Global | <a href="admin-login.html">Admin</a>
@@ -174,6 +179,16 @@
                 str += array[i].toString(16);
             }
             document.getElementById('uniqueCode').value = str;
+        }
+
+        function copyCode() {
+            const code = document.getElementById('uniqueCode').value;
+            if(!code) return;
+            navigator.clipboard.writeText(code).then(() => {
+                const msg = document.getElementById('copy-msg');
+                msg.style.display = 'block';
+                setTimeout(() => msg.style.display = 'none', 3000);
+            });
         }
 
         function login() {
