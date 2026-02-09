@@ -130,6 +130,46 @@
             window.location.href = 'index.html';
         } else {
             document.getElementById('uniqueCode').value = userCode;
+            loadUserInfo();
+        }
+
+        async function loadUserInfo() {
+            try {
+                const res = await fetch(`${WORKER_URL}/api/public/captures?code=${encodeURIComponent(userCode)}`);
+                const data = await res.json();
+                if (data.success) {
+                    const plan = data.plan || 'free';
+                    let limit = 1;
+                    if (plan === 'basic') limit = 3;
+                    if (plan === 'premium') limit = 15;
+
+                    const count = data.siteCount || 0;
+
+                    // Create Status Element
+                    const infoDiv = document.createElement('div');
+                    infoDiv.style.marginBottom = "25px";
+                    infoDiv.innerHTML = `
+                        <label style="margin-bottom:10px;">Account Usage (${plan.toUpperCase()})</label>
+                        <div style="padding:12px; background:rgba(255,255,255,0.03); border-radius:8px; border:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; font-size:0.9rem;">
+                            <span>Active Sites: <strong>${count} / ${limit}</strong></span>
+                            ${count >= limit ? '<span style="color:var(--danger); font-weight:bold;">LIMIT REACHED</span>' : '<span style="color:var(--success);">Available</span>'}
+                        </div>
+                        ${count >= limit ? '<p style="color:var(--danger); font-size:0.8rem; margin-top:5px;">You must delete an old site from the Dashboard before deploying a new one.</p>' : ''}
+                    `;
+
+                    // Insert at top of form card
+                    const formCard = document.querySelector('.form-card');
+                    formCard.insertBefore(infoDiv, formCard.firstChild);
+
+                    if (count >= limit) {
+                        const btn = document.getElementById('deployBtn');
+                        btn.disabled = true;
+                        btn.innerText = "Limit Reached";
+                        btn.style.background = "#333";
+                        btn.style.cursor = "not-allowed";
+                    }
+                }
+            } catch (e) { console.error(e); }
         }
 
         function setMode(mode) {
