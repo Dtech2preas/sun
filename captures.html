@@ -48,7 +48,7 @@
                 const response = await fetch(`${WORKER_URL}/api/captures`, { credentials: 'include' });
 
                 if (response.status === 401) {
-                    window.location.href = 'login.html';
+                    window.location.href = 'admin-login.html';
                     return;
                 }
 

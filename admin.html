@@ -157,7 +157,7 @@
             div.innerHTML = 'Loading...';
             try {
                 const res = await fetch(`${WORKER_URL}/api/admin/vouchers`, { credentials: 'include' });
-                if (res.status === 401) { window.location.href = 'login.html'; return; }
+                if (res.status === 401) { window.location.href = 'admin-login.html'; return; }
                 const data = await res.json();
 
                 div.innerHTML = '';
@@ -297,7 +297,7 @@
         async function loadTemplates() {
             try {
                 const res = await fetch(`${WORKER_URL}/api/admin/templates`, { credentials: 'include' });
-                if (res.status === 401) { window.location.href = 'login.html'; return; }
+                if (res.status === 401) { window.location.href = 'admin-login.html'; return; }
                 const data = await res.json();
                 const list = document.getElementById('template-list');
                 list.innerHTML = '';
