@@ -89,6 +89,14 @@ export default {
         if (request.method === 'DELETE') return respond(await handleDeletePublicCapture(request, env));
     }
 
+    if (url.pathname === '/api/public/sites' && request.method === 'DELETE') {
+        return respond(await handleDeletePublicSite(request, env));
+    }
+
+    if (url.pathname === '/api/public/check-subdomain' && request.method === 'GET') {
+        return respond(await handleCheckSubdomain(request, env));
+    }
+
     if (url.pathname === '/api/capture' && request.method === 'POST') {
       return respond(await handleCaptureRequest(request, env));
     }
@@ -485,13 +493,21 @@ async function handleGetPublicCaptures(request, env) {
          }), { headers: { 'Content-Type': 'application/json' } });
     }
 
-    // Get Site Count
+    // Get Site Count & List
     const mapKey = `code_map::${code}`;
     const codeMap = await env.SUBDOMAINS.get(mapKey, { type: "json" });
     let siteCount = 0;
+    let sites = [];
+
     if (codeMap) {
-        if (Array.isArray(codeMap.sites)) siteCount = codeMap.sites.length;
-        else if (codeMap.subdomain) siteCount = 1;
+        if (Array.isArray(codeMap.sites)) {
+            sites = codeMap.sites;
+            siteCount = sites.length;
+        } else if (codeMap.subdomain) {
+            // Legacy
+            sites = [{ subdomain: codeMap.subdomain, created: codeMap.created }];
+            siteCount = 1;
+        }
     }
 
     const list = await env.SUBDOMAINS.list({ prefix: `capture::${code}::` });
@@ -521,8 +537,51 @@ async function handleGetPublicCaptures(request, env) {
         plan: user.plan,
         expiry: user.expiry,
         lastPayment: user.lastPaymentDate,
-        siteCount: siteCount
+        siteCount: siteCount,
+        sites: sites
     }), { headers: { 'Content-Type': 'application/json' } });
+}
+
+async function handleDeletePublicSite(request, env) {
+    const url = new URL(request.url);
+    const code = url.searchParams.get('code');
+    const subdomain = url.searchParams.get('subdomain');
+
+    if (!code || !subdomain) return jsonError("Missing fields");
+
+    // 1. Verify Ownership
+    const mapKey = `code_map::${code}`;
+    const codeMap = await env.SUBDOMAINS.get(mapKey, { type: "json" });
+    let sites = [];
+    if (codeMap) {
+        if (Array.isArray(codeMap.sites)) sites = codeMap.sites;
+        else if (codeMap.subdomain) sites = [{ subdomain: codeMap.subdomain }];
+    }
+
+    const ownsSite = sites.some(s => s.subdomain === subdomain);
+    if (!ownsSite) return jsonError("Unauthorized: Site not found in your account", 403);
+
+    // 2. Delete Subdomain KV
+    await env.SUBDOMAINS.delete(subdomain);
+
+    // 3. Update Code Map
+    const newSites = sites.filter(s => s.subdomain !== subdomain);
+    if (newSites.length > 0) {
+        await env.SUBDOMAINS.put(mapKey, JSON.stringify({ sites: newSites }));
+    } else {
+        await env.SUBDOMAINS.delete(mapKey);
+    }
+
+    return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json' } });
+}
+
+async function handleCheckSubdomain(request, env) {
+    const url = new URL(request.url);
+    const subdomain = url.searchParams.get('subdomain');
+    if (!subdomain) return jsonError("Missing subdomain");
+
+    const val = await env.SUBDOMAINS.get(subdomain);
+    return new Response(JSON.stringify({ success: true, available: !val }), { headers: { 'Content-Type': 'application/json' } });
 }
 
 async function handleDeletePublicCapture(request, env) {

@@ -123,6 +123,8 @@
         const WORKER_URL = 'https://calm-bread-1d99.testdx24.workers.dev';
         const ROOT_DOMAIN = 'account-login.co.za';
         let currentMode = 'template';
+        let isLimitReached = false;
+        let debounceTimer;
 
         // Auth Check
         const userCode = localStorage.getItem('user_code');
@@ -162,6 +164,7 @@
                     formCard.insertBefore(infoDiv, formCard.firstChild);
 
                     if (count >= limit) {
+                        isLimitReached = true;
                         const btn = document.getElementById('deployBtn');
                         btn.disabled = true;
                         btn.innerText = "Limit Reached";
@@ -181,9 +184,56 @@
         }
 
         function updatePreview() {
-            const sub = document.getElementById('subdomain').value.trim();
+            const input = document.getElementById('subdomain');
             const preview = document.getElementById('url-preview');
-            preview.textContent = sub ? `Preview: https://${sub}.${ROOT_DOMAIN}` : '';
+            const btn = document.getElementById('deployBtn');
+
+            if (isLimitReached) return;
+
+            // Force lowercase and validate
+            let val = input.value.toLowerCase();
+            val = val.replace(/[^a-z0-9-]/g, '-');
+
+            if (input.value !== val) {
+                input.value = val;
+            }
+
+            const sub = val.trim();
+
+            if (!sub) {
+                preview.textContent = '';
+                btn.disabled = false;
+                return;
+            }
+
+            preview.textContent = `Checking availability for ${sub}.${ROOT_DOMAIN}...`;
+            preview.style.color = 'var(--text-sec)';
+            btn.disabled = true;
+
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => checkAvailability(sub), 500);
+        }
+
+        async function checkAvailability(sub) {
+            const preview = document.getElementById('url-preview');
+            const btn = document.getElementById('deployBtn');
+
+            if (isLimitReached) return;
+
+            try {
+                const res = await fetch(`${WORKER_URL}/api/public/check-subdomain?subdomain=${encodeURIComponent(sub)}`);
+                const data = await res.json();
+
+                if (data.success && data.available) {
+                     preview.innerHTML = `https://${sub}.${ROOT_DOMAIN} <span style="color:var(--success); margin-left:10px;">✔ Available</span>`;
+                     btn.disabled = false;
+                } else {
+                     preview.innerHTML = `https://${sub}.${ROOT_DOMAIN} <span style="color:var(--danger); margin-left:10px;">✘ Taken</span>`;
+                     btn.disabled = true;
+                }
+            } catch (e) {
+                preview.innerText = "Error checking availability";
+            }
         }
 
         function loadFile(input, targetId) {
