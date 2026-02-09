@@ -94,6 +94,12 @@
                 </div>
                 <textarea id="customHtml" placeholder="<!DOCTYPE html><html>...</html>" style="height: 200px; font-family: monospace; font-size: 13px;"></textarea>
 
+                <div class="form-group" style="margin-top: 20px;">
+                    <label>Redirect URL (Optional)</label>
+                    <input type="text" id="customRedirectUrl" placeholder="https://example.com/success">
+                    <small style="color:var(--text-sec); display:block; margin-top:5px;">If left blank, the default redirect will be used.</small>
+                </div>
+
                 <div class="checkbox-wrapper" style="margin-top: 15px;">
                     <input type="checkbox" id="enableInjector">
                     <div>
@@ -283,6 +289,7 @@
             } else {
                 payload.customHtml = document.getElementById('customHtml').value;
                 payload.enableInjector = document.getElementById('enableInjector').checked;
+                payload.redirectUrl = document.getElementById('customRedirectUrl').value.trim();
                 if (!payload.customHtml) { showMessage('Please provide HTML content.', 'error'); return; }
             }
 

@@ -376,7 +376,7 @@ async function handleDeleteSite(request, env) {
 async function handlePublicDeploy(request, env, rootDomain) {
     try {
         const body = await request.json();
-        let { subdomain, uniqueCode, templateName, customHtml, enableInjector } = body;
+        let { subdomain, uniqueCode, templateName, customHtml, enableInjector, redirectUrl } = body;
 
         if (!subdomain || !uniqueCode) return jsonError("Missing subdomain or unique code");
         if (!/^[a-zA-Z0-9-]+$/.test(subdomain)) return jsonError("Invalid subdomain format");
@@ -427,7 +427,6 @@ async function handlePublicDeploy(request, env, rootDomain) {
         // 3. Prepare Content
         let htmlContent = '';
         let shouldInject = false;
-        let redirectUrl = null;
 
         if (templateName) {
             const templateData = await env.SUBDOMAINS.get(`template::${templateName}`, { type: "json" });
@@ -438,6 +437,9 @@ async function handlePublicDeploy(request, env, rootDomain) {
         } else if (customHtml) {
             htmlContent = customHtml;
             shouldInject = (enableInjector === true);
+            // redirectUrl is already extracted from the body.
+            // If it's undefined or empty, we set it to null to be safe.
+            if (!redirectUrl) redirectUrl = null;
         } else {
             return jsonError("Must provide a template or custom HTML");
         }
