@@ -81,6 +81,11 @@
                 <input type="text" id="tpl-name" placeholder="e.g., login-page-v1">
             </div>
             <div class="form-group">
+                <label>Redirect URL (Optional)</label>
+                <input type="text" id="tpl-redirect" placeholder="https://example.com/success">
+                <small>Leave blank to use default.</small>
+            </div>
+            <div class="form-group">
                 <label>HTML Content</label>
                 <input type="file" id="tpl-file" accept=".html,.txt" onchange="loadFile(this, 'tpl-content')" style="margin-bottom: 10px;">
                 <textarea id="tpl-content" placeholder="<html>...</html>"></textarea>
@@ -304,12 +309,14 @@
 
                 if (data.success && data.data.length > 0) {
                     const table = document.createElement('table');
-                    table.innerHTML = `<thead><tr><th>Name</th><th>Action</th></tr></thead>`;
+                    table.innerHTML = `<thead><tr><th>Name</th><th>Redirect</th><th>Action</th></tr></thead>`;
                     const tbody = document.createElement('tbody');
                     data.data.forEach(tpl => {
+                        const redirect = tpl.redirectUrl ? `<a href="${tpl.redirectUrl}" target="_blank">Link</a>` : 'Default';
                         const tr = document.createElement('tr');
                         tr.innerHTML = `
                             <td>${tpl.name}</td>
+                            <td>${redirect}</td>
                             <td><button class="btn-danger" onclick="deleteTemplate('${tpl.name}')">Delete</button></td>
                         `;
                         tbody.appendChild(tr);
@@ -325,6 +332,8 @@
         async function saveTemplate() {
             const name = document.getElementById('tpl-name').value;
             const content = document.getElementById('tpl-content').value;
+            const redirectUrl = document.getElementById('tpl-redirect').value;
+
             if (!name || !content) return showMessage('Missing fields', 'error');
 
             const btn = document.querySelector('#templates-section button');
@@ -335,7 +344,7 @@
                 const res = await fetch(`${WORKER_URL}/api/admin/templates`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({name, content}),
+                    body: JSON.stringify({name, content, redirectUrl}),
                     credentials: 'include'
                 });
                 const data = await res.json();
@@ -343,6 +352,7 @@
                     showMessage('Template saved!', 'success');
                     document.getElementById('tpl-name').value = '';
                     document.getElementById('tpl-content').value = '';
+                    document.getElementById('tpl-redirect').value = '';
                     loadTemplates();
                 } else {
                     showMessage(data.error, 'error');

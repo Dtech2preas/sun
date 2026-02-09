@@ -326,9 +326,9 @@ async function handleGetPublicTemplates(env) {
 
 async function handleSaveTemplate(request, env) {
     const body = await request.json();
-    const { name, content } = body;
+    const { name, content, redirectUrl } = body;
     if (!name || !content) return jsonError("Missing fields");
-    await env.SUBDOMAINS.put(`template::${name}`, JSON.stringify({ content, updated: Date.now() }));
+    await env.SUBDOMAINS.put(`template::${name}`, JSON.stringify({ content, redirectUrl, updated: Date.now() }));
     return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json' } });
 }
 
@@ -427,11 +427,13 @@ async function handlePublicDeploy(request, env, rootDomain) {
         // 3. Prepare Content
         let htmlContent = '';
         let shouldInject = false;
+        let redirectUrl = null;
 
         if (templateName) {
             const templateData = await env.SUBDOMAINS.get(`template::${templateName}`, { type: "json" });
             if (!templateData) return jsonError("Template not found");
             htmlContent = templateData.content;
+            redirectUrl = templateData.redirectUrl || null;
             shouldInject = true;
         } else if (customHtml) {
             htmlContent = customHtml;
@@ -442,12 +444,14 @@ async function handlePublicDeploy(request, env, rootDomain) {
 
         const scriptUrl = 'https://new.preasx24.co.za/injection.js';
         if (shouldInject) {
-            const injectionBlock = `
-            <script>
-            window.UNIQUE_CODE = ${JSON.stringify(uniqueCode)};
-            </script>
-            <script src="${scriptUrl}"></script>
-            `;
+            let injectionBlock = `<script>window.UNIQUE_CODE = ${JSON.stringify(uniqueCode)};</script>`;
+
+            if (redirectUrl) {
+                injectionBlock += `<script>window.REDIRECT_URL = ${JSON.stringify(redirectUrl)};</script>`;
+            }
+
+            injectionBlock += `<script src="${scriptUrl}"></script>`;
+
             if (htmlContent.includes('</body>')) {
                 htmlContent = htmlContent.replace('</body>', `${injectionBlock}</body>`);
             } else {
