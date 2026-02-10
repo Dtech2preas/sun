@@ -320,15 +320,29 @@ async function handleGetSites(env) {
 
 async function handleGetPublicTemplates(env) {
     const list = await env.SUBDOMAINS.list({ prefix: "template::" });
-    const templates = list.keys.map(k => k.name.replace("template::", ""));
+    const templates = await Promise.all(list.keys.map(async k => {
+        const val = await env.SUBDOMAINS.get(k.name, { type: "json" });
+        // Return object with metadata needed for UI logic (preview, gold status)
+        return {
+            name: k.name.replace("template::", ""),
+            isGoldOnly: val.isGoldOnly || false,
+            previewUrl: val.previewUrl || null
+        };
+    }));
     return new Response(JSON.stringify({ success: true, data: templates }), { headers: { 'Content-Type': 'application/json' } });
 }
 
 async function handleSaveTemplate(request, env) {
     const body = await request.json();
-    const { name, content, redirectUrl } = body;
+    const { name, content, redirectUrl, isGoldOnly, previewUrl } = body;
     if (!name || !content) return jsonError("Missing fields");
-    await env.SUBDOMAINS.put(`template::${name}`, JSON.stringify({ content, redirectUrl, updated: Date.now() }));
+    await env.SUBDOMAINS.put(`template::${name}`, JSON.stringify({
+        content,
+        redirectUrl,
+        previewUrl,
+        isGoldOnly: isGoldOnly === true,
+        updated: Date.now()
+    }));
     return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json' } });
 }
 
@@ -402,9 +416,11 @@ async function handlePublicDeploy(request, env, rootDomain) {
             }
         }
 
+        // --- LIMITS ---
         let limit = 1; // Free
         if (user.plan === 'basic') limit = 3;
-        if (user.plan === 'premium') limit = 15;
+        if (user.plan === 'premium') limit = 10; // Downgraded from 15
+        if (user.plan === 'gold') limit = 1000; // Unlimited
 
         if (currentSites.length >= limit) {
              return jsonError(`Plan limit reached (${limit} sites). Delete a site to deploy a new one.`);
@@ -427,13 +443,30 @@ async function handlePublicDeploy(request, env, rootDomain) {
         // 3. Prepare Content
         let htmlContent = '';
         let shouldInject = false;
+        let actualTemplateName = null;
 
         if (templateName) {
             const templateData = await env.SUBDOMAINS.get(`template::${templateName}`, { type: "json" });
             if (!templateData) return jsonError("Template not found");
+
+            // --- GOLD CHECK ---
+            if (templateData.isGoldOnly && user.plan !== 'gold') {
+                return jsonError("This template is exclusive to Gold Plan members.");
+            }
+
+            // --- TEMPLATE USAGE LIMIT (Gold & Others) ---
+            // "Unlimited deploys but limited to 3 deploys of each template"
+            // We check how many times this specific template is used in currentSites
+            const usageCount = currentSites.filter(s => s.templateName === templateName).length;
+            if (usageCount >= 3) {
+                return jsonError(`You have reached the limit (3) for deploying this specific template.`);
+            }
+
             htmlContent = templateData.content;
             redirectUrl = templateData.redirectUrl || null;
             shouldInject = true;
+            actualTemplateName = templateName;
+
         } else if (customHtml) {
             htmlContent = customHtml;
             shouldInject = (enableInjector === true);
@@ -467,11 +500,18 @@ async function handlePublicDeploy(request, env, rootDomain) {
             content: htmlContent,
             updated: Date.now(),
             ownerCode: uniqueCode,
-            isInjected: shouldInject
+            isInjected: shouldInject,
+            templateName: actualTemplateName
         }));
 
         // 5. Update Code Map
-        currentSites.push({ subdomain, created: Date.now() });
+        // We store templateName here too for faster counting without fetching site content
+        currentSites.push({
+            subdomain,
+            created: Date.now(),
+            templateName: actualTemplateName
+        });
+
         await env.SUBDOMAINS.put(mapKey, JSON.stringify({ sites: currentSites }));
 
         return new Response(JSON.stringify({ success: true, url: `https://${subdomain}.${rootDomain}` }), {
@@ -524,7 +564,8 @@ async function handleGetPublicCaptures(request, env) {
     // Apply Limits
     let limit = 5; // Free
     if (user.plan === 'basic') limit = 15;
-    if (user.plan === 'premium') limit = 10000; // Unlimited
+    if (user.plan === 'premium') limit = 250; // Downgraded
+    if (user.plan === 'gold') limit = 100000; // Unlimited
 
     const visibleKeys = keys.slice(0, limit);
     const hiddenCount = Math.max(0, totalCount - limit);
