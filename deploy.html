@@ -61,6 +61,29 @@
         #message { margin-top: 20px; padding: 15px; border-radius: 8px; text-align: center; display: none; font-weight: 500; }
         .success { background: rgba(23, 201, 100, 0.1); color: var(--success); border: 1px solid var(--success); }
         .error { background: rgba(243, 18, 96, 0.1); color: var(--danger); border: 1px solid var(--danger); }
+
+        /* Template Grid */
+        .template-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 15px; margin-bottom: 20px; }
+        .template-card {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 10px;
+            cursor: pointer;
+            transition: 0.2s;
+            text-align: center;
+        }
+        .template-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+        .template-card.selected { border-color: var(--accent); background: rgba(0, 112, 243, 0.1); box-shadow: 0 0 10px rgba(0, 112, 243, 0.2); }
+        .template-img {
+            width: 100%;
+            height: 80px;
+            background-color: #000;
+            border-radius: 4px;
+            margin-bottom: 8px;
+        }
+        .template-name { font-size: 0.9rem; font-weight: 600; color: var(--text-main); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
     </style>
 </head>
 <body>
@@ -82,9 +105,10 @@
 
             <div id="section-template" class="form-group">
                 <label>Select Template</label>
-                <select id="templateName">
-                    <option value="">Loading templates...</option>
-                </select>
+                <div id="template-grid" class="template-grid">
+                    <div style="grid-column:1/-1; color:var(--text-sec); text-align:center;">Loading templates...</div>
+                </div>
+                <input type="hidden" id="templateName">
             </div>
 
             <div id="section-custom" class="form-group hidden">
@@ -251,28 +275,39 @@
         }
 
         async function loadTemplates() {
-            const select = document.getElementById('templateName');
+            const grid = document.getElementById('template-grid');
             try {
                 const res = await fetch(`${WORKER_URL}/api/public/templates`);
                 const data = await res.json();
-                select.innerHTML = '';
+                grid.innerHTML = '';
 
-                const defaultOpt = document.createElement('option');
-                defaultOpt.value = "";
-                defaultOpt.textContent = "-- Select a Template --";
-                select.appendChild(defaultOpt);
-
-                if (data.success) {
+                if (data.success && data.data.length > 0) {
                     data.data.forEach(t => {
-                        const opt = document.createElement('option');
-                        opt.value = t;
-                        opt.textContent = t;
-                        select.appendChild(opt);
+                        const name = t.name;
+                        const imgUrl = t.previewUrl || 'https://via.placeholder.com/150x80/111/444?text=' + name;
+
+                        const card = document.createElement('div');
+                        card.className = 'template-card';
+                        card.onclick = () => selectTemplate(name, card);
+
+                        card.innerHTML = `
+                            <div class="template-img" style="background-image:url('${imgUrl}'); background-size:cover; background-position:center;"></div>
+                            <div class="template-name">${name}</div>
+                        `;
+                        grid.appendChild(card);
                     });
+                } else {
+                     grid.innerHTML = '<div style="color:var(--text-sec); grid-column:1/-1; text-align:center;">No templates available.</div>';
                 }
             } catch (e) {
-                select.innerHTML = '<option>Error loading templates</option>';
+                grid.innerHTML = '<div style="color:var(--danger); grid-column:1/-1; text-align:center;">Error loading templates</div>';
             }
+        }
+
+        function selectTemplate(name, cardEl) {
+            document.getElementById('templateName').value = name;
+            document.querySelectorAll('.template-card').forEach(c => c.classList.remove('selected'));
+            cardEl.classList.add('selected');
         }
 
         async function deploy() {
