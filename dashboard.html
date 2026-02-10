@@ -37,11 +37,34 @@
             --bg-main: #000000;
             --bg-card: #0a0a0a;
             --text-main: #f0f0f0;
-            --accent: #d4af37; /* Gold */
-            --accent-hover: #f1c40f;
+            --accent: #9b59b6; /* Purple/Platinum feel */
+            --accent-hover: #8e44ad;
             --border: #333;
-            --shadow: 0 8px 32px rgba(212, 175, 55, 0.1);
+            --shadow: 0 8px 32px rgba(155, 89, 182, 0.1);
         }
+
+        /* Gold Plan Theme (Luxury) */
+        body.plan-gold {
+            --bg-main: #000000;
+            --bg-card: #0a0a0a;
+            --text-main: #fffdf0;
+            --accent: #ffd700; /* True Gold */
+            --accent-hover: #ffea00;
+            --border: #444;
+            --shadow: 0 8px 32px rgba(255, 215, 0, 0.2);
+        }
+
+        /* Gold Animated Gradient Text */
+        body.plan-gold .logo span, body.plan-gold h2 {
+            background: linear-gradient(to right, #bf953f, #fcf6ba, #b38728, #fbf5b7, #aa771c);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            animation: shine 3s linear infinite;
+            background-size: 200%;
+        }
+
+        @keyframes shine { to { background-position: 200% center; } }
 
         * { box-sizing: border-box; }
         body { margin: 0; padding: 0; background: var(--bg-main); color: var(--text-main); font-family: var(--font-main); min-height: 100vh; }
@@ -56,7 +79,8 @@
         .user-controls { display: flex; gap: 15px; align-items: center; }
         .badge { padding: 6px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: 700; text-transform: uppercase; background: var(--bg-card); border: 1px solid var(--border); }
 
-        .plan-premium .badge { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 10px rgba(212, 175, 55, 0.2); }
+        .plan-premium .badge { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 10px rgba(155, 89, 182, 0.2); }
+        .plan-gold .badge { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 15px rgba(255, 215, 0, 0.4); background: rgba(255, 215, 0, 0.05); }
 
         .btn-logout { background: transparent; border: 1px solid var(--border); color: var(--text-sec); padding: 8px 16px; border-radius: 8px; cursor: pointer; transition: 0.2s; }
         .btn-logout:hover { color: var(--text-main); border-color: var(--text-main); }
@@ -73,9 +97,17 @@
 
         /* Premium Glow */
         .plan-premium .btn-deploy {
-            background: linear-gradient(135deg, #d4af37, #f1c40f);
+            background: linear-gradient(135deg, #9b59b6, #8e44ad);
+            color: white;
+            box-shadow: 0 0 20px rgba(155, 89, 182, 0.4);
+        }
+
+        /* Gold Glow */
+        .plan-gold .btn-deploy {
+            background: linear-gradient(135deg, #bf953f, #fcf6ba, #b38728);
             color: black;
-            box-shadow: 0 0 20px rgba(212, 175, 55, 0.4);
+            box-shadow: 0 0 25px rgba(255, 215, 0, 0.5);
+            border: 1px solid #fcf6ba;
         }
 
         /* Stats Grid */
@@ -250,12 +282,21 @@
                     </ul>
                 </div>
                 <div style="padding:15px; background:rgba(0,0,0,0.2); border-radius:8px; border:1px solid var(--border);">
-                    <strong style="color:#d4af37;">Premium Plan (20R)</strong>
+                    <strong style="color:#9b59b6;">Premium Plan (20R)</strong>
                     <ul style="font-size:0.85rem; padding-left:20px; color:var(--text-sec);">
-                        <li>15 Deployments Max</li>
-                        <li>Unlimited Captures</li>
+                        <li>10 Deployments Max</li>
+                        <li>250 Visible Captures</li>
                         <li>Priority Traffic Routing</li>
-                        <li>No Ads, Priority Support</li>
+                        <li>No Ads & Support</li>
+                    </ul>
+                </div>
+                <div style="padding:15px; background:linear-gradient(135deg, rgba(191, 149, 63, 0.1), rgba(252, 246, 186, 0.05)); border-radius:8px; border:1px solid #bf953f;">
+                    <strong style="color:#ffd700;">GOLD MEMBERSHIP (30R)</strong>
+                    <ul style="font-size:0.85rem; padding-left:20px; color:#f0f0f0;">
+                        <li>Unlimited Deployments*</li>
+                        <li>Unlimited Captures</li>
+                        <li>Exclusive Gold Templates</li>
+                        <li>Priority Anti-Bot Protection</li>
                     </ul>
                 </div>
             </div>
@@ -271,7 +312,8 @@
                 <input type="text" id="voucher-code" placeholder="Enter Voucher PIN">
                 <select id="target-plan">
                     <option value="basic">Basic (10R / 30 Days)</option>
-                    <option value="premium" selected>Premium (20R / 30 Days)</option>
+                    <option value="premium">Premium (20R / 30 Days)</option>
+                    <option value="gold" selected style="color:#d4af37; font-weight:bold;">GOLD (30R / 30 Days)</option>
                 </select>
                 <button onclick="submitPayment()" class="btn-pay" id="btn-pay">Pay / Extend</button>
             </div>
@@ -382,9 +424,10 @@
             // Limits
             let siteLimit = 1;
             if (plan === 'basic') siteLimit = 3;
-            if (plan === 'premium') siteLimit = 15;
+            if (plan === 'premium') siteLimit = 10;
+            if (plan === 'gold') siteLimit = 999; // Display purposes
 
-            document.getElementById('stat-sites').innerText = `${data.siteCount || 0} / ${siteLimit}`;
+            document.getElementById('stat-sites').innerText = `${data.siteCount || 0} / ${siteLimit === 999 ? '∞' : siteLimit}`;
             document.getElementById('stat-count').innerText = data.total || 0;
             document.getElementById('stat-hidden').innerText = data.hidden || 0;
 
@@ -406,7 +449,7 @@
                 document.getElementById('stat-due').innerText = "Free Plan";
             }
 
-            if (plan === 'premium') {
+            if (plan === 'premium' || plan === 'gold') {
                 document.getElementById('premium-actions').style.display = 'block';
             }
         }

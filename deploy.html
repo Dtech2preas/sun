@@ -131,6 +131,8 @@
         let currentMode = 'template';
         let isLimitReached = false;
         let debounceTimer;
+        let userPlan = 'free'; // Default
+        let templatesMap = {}; // Stores template metadata
 
         // Auth Check
         const userCode = localStorage.getItem('user_code');
@@ -147,9 +149,12 @@
                 const data = await res.json();
                 if (data.success) {
                     const plan = data.plan || 'free';
+                    userPlan = plan; // Store globally
+
                     let limit = 1;
                     if (plan === 'basic') limit = 3;
-                    if (plan === 'premium') limit = 15;
+                    if (plan === 'premium') limit = 10;
+                    if (plan === 'gold') limit = 999;
 
                     const count = data.siteCount || 0;
 
@@ -252,6 +257,8 @@
 
         async function loadTemplates() {
             const select = document.getElementById('templateName');
+            select.onchange = checkTemplateSelection; // Add listener
+
             try {
                 const res = await fetch(`${WORKER_URL}/api/public/templates`);
                 const data = await res.json();
@@ -264,14 +271,54 @@
 
                 if (data.success) {
                     data.data.forEach(t => {
+                        // Handle object or string (legacy compat)
+                        const name = typeof t === 'object' ? t.name : t;
+                        const isGold = typeof t === 'object' ? t.isGoldOnly : false;
+                        const preview = typeof t === 'object' ? t.previewUrl : null;
+
+                        // Store metadata
+                        templatesMap[name] = { isGold, preview };
+
                         const opt = document.createElement('option');
-                        opt.value = t;
-                        opt.textContent = t;
+                        opt.value = name;
+                        opt.textContent = name + (isGold ? " 🔒 (GOLD ONLY)" : "");
+                        if(isGold) opt.style.color = "#ffd700"; // Gold color in dropdown
                         select.appendChild(opt);
                     });
                 }
             } catch (e) {
                 select.innerHTML = '<option>Error loading templates</option>';
+            }
+        }
+
+        function checkTemplateSelection() {
+            const select = document.getElementById('templateName');
+            const name = select.value;
+            const btn = document.getElementById('deployBtn');
+            const msg = document.getElementById('message');
+
+            if (!name) return;
+
+            const tpl = templatesMap[name];
+            if (tpl && tpl.isGold && userPlan !== 'gold') {
+                btn.disabled = true;
+                btn.innerText = "Gold Plan Required";
+
+                let html = `This template is exclusive to Gold members.`;
+                if(tpl.previewUrl) {
+                    html += ` <a href="${tpl.previewUrl}" target="_blank" style="color:var(--accent); font-weight:bold;">Preview Template</a>`;
+                }
+                showMessage(html, 'error'); // Using error style for warning
+                document.getElementById('message').innerHTML = html; // Allow HTML
+            } else {
+                if (!isLimitReached) {
+                    btn.disabled = false;
+                    btn.innerText = "Deploy Site";
+                } else {
+                    btn.disabled = true;
+                    btn.innerText = "Limit Reached";
+                }
+                msg.style.display = 'none';
             }
         }
 
