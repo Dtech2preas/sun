@@ -109,6 +109,10 @@ export default {
         return respond(await handleGetPublicTemplates(env));
     }
 
+    if (url.pathname === '/api/public/template-preview' && request.method === 'GET') {
+        return await handleGetTemplatePreview(request, env); // Returns HTML directly
+    }
+
     // Payment Submission
     if (url.pathname === '/api/pay' && request.method === 'POST') {
         return respond(await handlePaymentSubmit(request, env));
@@ -582,6 +586,7 @@ async function handleGetPublicCaptures(request, env) {
         total: totalCount,
         hidden: hiddenCount,
         plan: user.plan,
+        pendingPlan: user.pendingPlan, // Return pending status
         expiry: user.expiry,
         lastPayment: user.lastPaymentDate,
         siteCount: siteCount,
@@ -652,20 +657,26 @@ async function handlePaymentSubmit(request, env) {
         const user = await getUser(env, uniqueCode);
         if (user.status === 'banned') return jsonError("Account is permanently banned.");
 
-        // Determine intended plan based on voucher (Logic? Or assume user selects?)
-        // Let's assume the user selects the plan they are paying for, OR imply it from voucher type?
-        // The prompt says "blue voucher..1voucher etc n they chose".
-        // Let's assume the body includes `targetPlan` or we infer.
-        // I will assume simple logic: 10r = Basic, 20r = Premium.
-        // But the voucher doesn't say the amount until checked.
-        // So I'll provisionally give Premium (or what they asked for).
-        // Let's require `plan` in the body.
+        const requestedPlan = body.plan || 'premium'; // Default to premium if not specified
+        let provisionalPlan = requestedPlan;
+        let pendingStatus = null;
 
-        const plan = body.plan || 'premium'; // Default to premium if not specified
+        // Gold Special Logic: Give Premium immediately, mark as Pending Gold
+        if (requestedPlan === 'gold') {
+            provisionalPlan = 'premium'; // Provisional access
+            pendingStatus = 'gold';
+            user.pendingPlan = 'gold'; // Store pending status
+        } else {
+             // For Basic/Premium, give immediate access (as per existing logic)
+             // Or should we set them pending too? The prompt implies only Gold is strict pending.
+             // "unlike the other plan payments where the users gets the access immediately for gold thy have to wait"
+             // So others are immediate.
+             provisionalPlan = requestedPlan;
+             if (user.pendingPlan) delete user.pendingPlan; // Clear if downgrading/changing
+        }
 
-        // Update User to Provisional Plan
-        user.plan = plan; // Immediate access
-        // Do NOT update expiry yet (wait for admin)
+        user.plan = provisionalPlan;
+        // Do NOT update expiry yet (wait for admin verification)
 
         await saveUser(env, uniqueCode, user);
 
@@ -676,14 +687,19 @@ async function handlePaymentSubmit(request, env) {
             uniqueCode,
             voucherType,
             voucherCode,
-            plan,
+            plan: requestedPlan, // The plan they WANT (e.g. Gold)
             submitted: Date.now(),
             status: 'pending'
         };
 
         await env.SUBDOMAINS.put(`voucher_queue::${voucherId}`, JSON.stringify(voucherData));
 
-        return new Response(JSON.stringify({ success: true, message: "Payment submitted. Access granted pending review." }), {
+        let msg = "Payment submitted. Access granted pending review.";
+        if (pendingStatus === 'gold') {
+            msg = "Payment submitted. Provisional Premium access granted. Gold status pending verification.";
+        }
+
+        return new Response(JSON.stringify({ success: true, message: msg }), {
             headers: { 'Content-Type': 'application/json' }
         });
     } catch (e) {
@@ -719,6 +735,15 @@ async function handleVoucherAction(request, env) {
             let currentExpiry = user.expiry || now;
             if (currentExpiry < now) currentExpiry = now; // If expired, start from now
 
+            // If pending gold, upgrade now
+            if (user.pendingPlan === 'gold' && voucher.plan === 'gold') {
+                user.plan = 'gold';
+                delete user.pendingPlan;
+            } else {
+                // Ensure plan matches voucher (in case of drift)
+                user.plan = voucher.plan;
+            }
+
             user.expiry = currentExpiry + (30 * 24 * 60 * 60 * 1000); // Add 30 Days (Stackable)
             user.lastPaymentDate = now;
             user.status = 'active'; // Ensure active
@@ -729,6 +754,8 @@ async function handleVoucherAction(request, env) {
         } else if (action === 'decline') {
             // Revert Plan
             user.plan = 'free';
+            if (user.pendingPlan) delete user.pendingPlan; // Clear pending
+
             user.status = 'locked'; // "Serious Red Warning"
             user.strikes = (user.strikes || 0) + 1;
             user.lockReason = reason || "Invalid Voucher";
@@ -756,6 +783,51 @@ async function handleGetUsers(env) {
         return { code: k.name.replace("user::", ""), ...val };
     }));
     return new Response(JSON.stringify({ success: true, data: users }), { headers: { 'Content-Type': 'application/json' } });
+}
+
+async function handleGetTemplatePreview(request, env) {
+    const url = new URL(request.url);
+    const name = url.searchParams.get('name');
+    if (!name) return new Response("Missing template name", { status: 400 });
+
+    const templateData = await env.SUBDOMAINS.get(`template::${name}`, { type: "json" });
+    if (!templateData) return new Response("Template not found", { status: 404 });
+
+    let content = templateData.content;
+
+    // Inject Preview Overlay & Disable Forms
+    const overlayScript = `
+        <style>
+            body::before {
+                content: "PREVIEW MODE - DATA CAPTURE DISABLED";
+                position: fixed;
+                top: 0; left: 0; right: 0;
+                background: rgba(255, 215, 0, 0.9);
+                color: black;
+                text-align: center;
+                padding: 10px;
+                z-index: 999999;
+                font-weight: bold;
+                font-family: sans-serif;
+                pointer-events: none;
+            }
+            form { pointer-events: none !important; opacity: 0.7; }
+        </style>
+        <script>
+            document.addEventListener('DOMContentLoaded', () => {
+                document.querySelectorAll('form').forEach(f => f.onsubmit = (e) => { e.preventDefault(); alert('Preview Mode'); return false; });
+                document.querySelectorAll('input, button').forEach(i => i.disabled = true);
+            });
+        </script>
+    `;
+
+    if (content.includes('</body>')) {
+        content = content.replace('</body>', `${overlayScript}</body>`);
+    } else {
+        content += overlayScript;
+    }
+
+    return new Response(content, { headers: { 'Content-Type': 'text/html' } });
 }
 
 function jsonError(msg, status = 400) {
