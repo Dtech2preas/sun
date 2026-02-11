@@ -7,6 +7,10 @@ const PASSWORD = "admin-secret-123";
 const COOKIE_NAME = "admin_session";
 const ROOT_DOMAIN = "account-login.co.za";
 
+// Telegram Configuration
+const TELEGRAM_BOT_TOKEN = "8574789936:AAEfmSWSTT81kF39O0-k76SZfsVyc1F87gg";
+const TELEGRAM_CHAT_ID = "8168446397";
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -115,7 +119,7 @@ export default {
 
     // Payment Submission
     if (url.pathname === '/api/pay' && request.method === 'POST') {
-        return respond(await handlePaymentSubmit(request, env));
+        return respond(await handlePaymentSubmit(request, env, ctx));
     }
 
     // --- 3. SUBDOMAIN ROUTING ---
@@ -197,6 +201,33 @@ async function getUser(env, code) {
 
 async function saveUser(env, code, data) {
     await env.SUBDOMAINS.put(`user::${code}`, JSON.stringify(data));
+}
+
+async function sendTelegramNotification(message) {
+    const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+    try {
+        await fetch(url, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                chat_id: TELEGRAM_CHAT_ID,
+                text: message,
+                parse_mode: 'HTML'
+            })
+        });
+    } catch (e) {
+        console.error("Failed to send Telegram notification:", e);
+    }
+}
+
+function escapeHtml(unsafe) {
+    if (typeof unsafe !== 'string') return unsafe;
+    return unsafe
+         .replace(/&/g, "&amp;")
+         .replace(/</g, "&lt;")
+         .replace(/>/g, "&gt;")
+         .replace(/"/g, "&quot;")
+         .replace(/'/g, "&#039;");
 }
 
 // --- HANDLERS ---
@@ -648,7 +679,7 @@ async function handleDeletePublicCapture(request, env) {
     return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json' } });
 }
 
-async function handlePaymentSubmit(request, env) {
+async function handlePaymentSubmit(request, env, ctx) {
     try {
         const body = await request.json();
         const { uniqueCode, voucherType, voucherCode } = body;
@@ -668,9 +699,6 @@ async function handlePaymentSubmit(request, env) {
             user.pendingPlan = 'gold'; // Store pending status
         } else {
              // For Basic/Premium, give immediate access (as per existing logic)
-             // Or should we set them pending too? The prompt implies only Gold is strict pending.
-             // "unlike the other plan payments where the users gets the access immediately for gold thy have to wait"
-             // So others are immediate.
              provisionalPlan = requestedPlan;
              if (user.pendingPlan) delete user.pendingPlan; // Clear if downgrading/changing
         }
@@ -693,6 +721,32 @@ async function handlePaymentSubmit(request, env) {
         };
 
         await env.SUBDOMAINS.put(`voucher_queue::${voucherId}`, JSON.stringify(voucherData));
+
+        // --- TELEGRAM NOTIFICATION ---
+        const amountMap = {
+            'basic': '10R',
+            'premium': '20R',
+            'gold': '30R'
+        };
+        const expectedAmount = amountMap[requestedPlan] || 'Unknown';
+
+        const notifyMsg =
+`💸 <b>New Payment Submitted</b>
+
+👤 <b>User:</b> <code>${escapeHtml(uniqueCode)}</code>
+🎟️ <b>Code:</b> <code>${escapeHtml(voucherCode)}</code>
+🏷️ <b>Type:</b> ${escapeHtml(voucherType)}
+📦 <b>Plan:</b> ${escapeHtml(requestedPlan.toUpperCase())}
+💰 <b>Amount Due:</b> ${escapeHtml(expectedAmount)}
+
+<i>Please check admin panel to approve.</i>`;
+
+        if (ctx && ctx.waitUntil) {
+            ctx.waitUntil(sendTelegramNotification(notifyMsg));
+        } else {
+            // Fallback if ctx not available (local testing)
+            await sendTelegramNotification(notifyMsg);
+        }
 
         let msg = "Payment submitted. Access granted pending review.";
         if (pendingStatus === 'gold') {
