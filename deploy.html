@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>D-TECH Hub | Deploy</title>
+    <script src="config.js"></script>
     <style>
         /* Shared Styles (Copied from Dashboard for consistency) */
         :root {
@@ -193,8 +194,8 @@
     </div>
 
     <script>
-        const WORKER_URL = 'https://calm-bread-1d99.testdx24.workers.dev';
-        const ROOT_DOMAIN = 'account-login.co.za';
+        const WORKER_URL = CONFIG.API_URL;
+        const ROOT_DOMAIN = CONFIG.ROOT_DOMAIN;
         let currentMode = 'template';
         let isLimitReached = false;
         let debounceTimer;

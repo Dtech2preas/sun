@@ -1,0 +1,135 @@
+========================================================================
+           D-TECH CLOUD - NEW DOMAIN DEPLOYMENT GUIDE
+========================================================================
+
+This guide explains how to set up the entire system on a brand new Cloudflare
+account with a new domain (e.g., `log-in.co.za`).
+
+PREREQUISITES:
+1. A new Cloudflare Account (free).
+2. A new domain name purchased and added to this Cloudflare account.
+3. The source code files provided in this repository.
+
+------------------------------------------------------------------------
+PART 1: CLOUDFLARE ACCOUNT SETUP
+------------------------------------------------------------------------
+1. Log in to your new Cloudflare account.
+2. Click "Add Site" and enter your new domain (e.g., `log-in.co.za`).
+3. Select the "Free" plan and follow the instructions to change your nameservers
+   at your domain registrar to point to Cloudflare.
+4. Wait for the domain to become "Active" in Cloudflare.
+
+------------------------------------------------------------------------
+PART 2: WORKER SETUP
+------------------------------------------------------------------------
+1. Go to "Workers & Pages" in the Cloudflare Dashboard sidebar.
+2. Click "Create Application" -> "Create Worker".
+3. Name it something relevant (e.g., `dtech-backend`).
+4. Click "Deploy" (this deploys a default Hello World script).
+5. Now, click "Edit Code".
+6. Delete the default code and PASTE the entire content of `worker.js`
+   from this repository into the editor.
+7. Click "Save and Deploy".
+
+------------------------------------------------------------------------
+PART 3: KV NAMESPACE (DATABASE) SETUP
+------------------------------------------------------------------------
+1. Go back to the Worker's settings page (click the back arrow from the editor).
+2. Go to "Settings" -> "Variables" -> "KV Namespace Bindings".
+3. Click "Add Binding".
+4. Name the Variable: `SUBDOMAINS` (Must be exactly this!).
+5. Under "KV Namespace", click "Create new KV Namespace".
+6. Name it something like `dtech_db` and click "Add".
+7. Click "Save and Deploy".
+
+------------------------------------------------------------------------
+PART 4: ENVIRONMENT VARIABLES (CONFIGURATION)
+------------------------------------------------------------------------
+This is where you configure your new domain without editing code!
+
+1. Still in "Settings" -> "Variables", scroll to "Environment Variables".
+2. Click "Add Variable" for each of the following:
+
+   Variable Name          | Value (Example)
+   -----------------------|-----------------------------------------
+   ROOT_DOMAIN            | log-in.co.za (Your NEW domain)
+   ADMIN_PASSWORD         | your-secure-password
+   INJECTION_SCRIPT_URL   | https://your-frontend.com/injection.js
+   FRONTEND_URL           | https://your-frontend.com
+   API_URL                | https://dtech-backend.your-name.workers.dev
+
+   * `API_URL`: You can find this on your Worker's overview page (e.g., usually ends in .workers.dev).
+   * `INJECTION_SCRIPT_URL`: Where you host the `injection.js` file (see Part 5).
+   * `FRONTEND_URL`: Where you host the dashboard HTML files (see Part 5).
+
+3. Click "Save and Deploy".
+
+------------------------------------------------------------------------
+PART 5: FRONTEND DEPLOYMENT
+------------------------------------------------------------------------
+You need to host the HTML files (`dashboard.html`, `deploy.html`, `admin.html`, etc.) somewhere.
+You can use GitHub Pages, Netlify, or Cloudflare Pages.
+
+1. Upload the following files to your hosting provider:
+   - `index.html`
+   - `dashboard.html`
+   - `deploy.html`
+   - `admin.html`
+   - `admin-login.html`
+   - `config.js`
+   - `injection.js`
+
+2. **IMPORTANT**: Edit `config.js` on your hosting provider (or before uploading):
+
+   const CONFIG = {
+       API_URL: 'https://dtech-backend.your-name.workers.dev', // Your NEW Worker URL
+       ROOT_DOMAIN: 'log-in.co.za',                           // Your NEW Domain
+       INJECTION_URL: 'https://your-frontend.com/injection.js' // Your NEW hosted injection.js
+   };
+
+3. Save the file.
+
+------------------------------------------------------------------------
+PART 6: DNS CONFIGURATION ( WILDCARD SUBDOMAINS )
+------------------------------------------------------------------------
+Now we link your domain to the Worker.
+
+1. Go to your Domain in Cloudflare -> "DNS" -> "Records".
+2. Click "Add Record".
+   - Type: `CNAME`
+   - Name: `*` (Asterisk for wildcard)
+   - Target: `dtech-backend.your-name.workers.dev` (Your Worker URL)
+   - Proxy status: `Proxied` (Orange Cloud)
+   - Click "Save".
+
+3. Add another record for the root domain (optional, if you want root to hit worker too):
+   - Type: `CNAME`
+   - Name: `@`
+   - Target: `dtech-backend.your-name.workers.dev`
+   - Proxy status: `Proxied`
+   - Click "Save".
+
+------------------------------------------------------------------------
+PART 7: WORKER ROUTES ( CRITICAL )
+------------------------------------------------------------------------
+For the wildcard DNS to actually trigger the worker, you must add a Route.
+
+1. Go to "Workers & Pages" -> Select your Worker (`dtech-backend`).
+2. Go to "Settings" -> "Triggers".
+3. Scroll to "Routes".
+4. Click "Add Route".
+   - Route: `*.log-in.co.za/*` (Replace with your new domain)
+   - Zone: `log-in.co.za`
+   - Click "Add Route".
+
+5. (Optional) Add route for root if needed: `log-in.co.za/*`.
+
+------------------------------------------------------------------------
+PART 8: VERIFICATION
+------------------------------------------------------------------------
+1. Go to `https://your-frontend.com/admin.html`.
+2. Login with the password you set in `ADMIN_PASSWORD`.
+3. Go to `https://your-frontend.com/deploy.html` and try deploying a site (e.g., `test`).
+4. Visit `https://test.log-in.co.za`. It should load!
+
+DONE! You have successfully migrated to a new domain.
