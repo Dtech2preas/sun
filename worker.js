@@ -686,6 +686,10 @@ async function handlePaymentSubmit(request, env) {
             provisionalPlan = 'premium';
             pendingStatus = 'gold';
             user.pendingPlan = 'gold';
+        } else if (requestedPlan === 'premium') {
+            provisionalPlan = 'basic';
+            pendingStatus = 'premium';
+            user.pendingPlan = 'premium';
         } else {
              provisionalPlan = requestedPlan;
              if (user.pendingPlan) delete user.pendingPlan;
@@ -711,6 +715,8 @@ async function handlePaymentSubmit(request, env) {
         let msg = "Payment submitted. Access granted pending review.";
         if (pendingStatus === 'gold') {
             msg = "Payment submitted. Provisional Premium access granted. Gold status pending verification.";
+        } else if (pendingStatus === 'premium') {
+            msg = "Payment submitted. Provisional Basic access granted. Premium status pending verification.";
         }
 
         return new Response(JSON.stringify({ success: true, message: msg }), {
@@ -747,12 +753,8 @@ async function handleVoucherAction(request, env) {
             let currentExpiry = user.expiry || now;
             if (currentExpiry < now) currentExpiry = now;
 
-            if (user.pendingPlan === 'gold' && voucher.plan === 'gold') {
-                user.plan = 'gold';
-                delete user.pendingPlan;
-            } else {
-                user.plan = voucher.plan;
-            }
+            user.plan = voucher.plan;
+            if (user.pendingPlan) delete user.pendingPlan;
 
             user.expiry = currentExpiry + (30 * 24 * 60 * 60 * 1000);
             user.lastPaymentDate = now;

@@ -190,6 +190,40 @@
         .domain-badge { background: var(--border); color: var(--text-sec); padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; display: inline-block; }
         .plan-basic .domain-badge { background: var(--accent); color: white; }
         .plan-premium .domain-badge { background: var(--accent); color: white; }
+
+        .raw-json {
+            background: #0d1117;
+            color: #c9d1d9;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 0.85rem;
+            white-space: pre-wrap;
+            word-break: break-all;
+            border: 1px solid var(--border);
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .hide-btn {
+            float: right;
+            cursor: pointer;
+            color: var(--text-sec);
+            font-size: 0.8rem;
+            opacity: 0.5;
+            transition: 0.2s;
+            border: none;
+            background: none;
+        }
+        .hide-btn:hover { opacity: 1; color: var(--danger); }
+
+        .restore-link {
+            font-size: 0.75rem;
+            color: var(--accent);
+            cursor: pointer;
+            text-decoration: underline;
+            margin-left: 10px;
+        }
     </style>
 </head>
 <body>
@@ -222,6 +256,11 @@
         <div id="pending-msg" class="pending-banner">
             <h3>⏳ GOLD UPGRADE PENDING</h3>
             <p>Your Gold upgrade is currently being verified by an admin. In the meantime, you have full access to <strong>PREMIUM</strong> features!</p>
+        </div>
+
+        <div id="pending-premium-msg" class="pending-banner" style="border-color: var(--accent); color: var(--accent);">
+            <h3>⏳ PREMIUM UPGRADE PENDING</h3>
+            <p>Your Premium upgrade is currently being verified. In the meantime, you have full access to <strong>BASIC</strong> features!</p>
         </div>
 
         <div class="hero">
@@ -267,6 +306,7 @@
         <div class="section-header">
             <div style="display:flex; align-items:center; gap:15px;">
                 <h3 style="margin:0;">Captured Data</h3>
+                <button onclick="fetchCaptures(currentPage)" class="btn-action" title="Refresh Data">🔄</button>
                 <select id="site-filter" onchange="filterData()" style="padding: 6px; background: var(--bg-card); color: var(--text-main); border: 1px solid var(--border); border-radius: 6px;">
                     <option value="all">All Sites</option>
                 </select>
@@ -382,6 +422,25 @@
         // Init
         document.addEventListener('DOMContentLoaded', () => {
             fetchCaptures(1);
+
+            // Gold Plan: Field Visibility Toggle & Restore
+            document.body.addEventListener('click', (e) => {
+                // Hide Field
+                if (e.target.classList.contains('hide-btn')) {
+                    const domain = e.target.getAttribute('data-domain');
+                    const key = e.target.getAttribute('data-key');
+                    if (domain && key) {
+                        toggleFieldVisibility(domain, key, true);
+                    }
+                }
+                // Restore All
+                if (e.target.classList.contains('restore-link')) {
+                    const domain = e.target.getAttribute('data-restore-domain');
+                    if (domain) {
+                        restoreHiddenFields(domain);
+                    }
+                }
+            });
         });
 
         async function fetchCaptures(page = 1) {
@@ -547,6 +606,10 @@
                 document.getElementById('pending-msg').style.display = 'block';
                 // Even though pending, we show Premium features as per logic
             }
+
+            if (data.pendingPlan === 'premium') {
+                document.getElementById('pending-premium-msg').style.display = 'block';
+            }
         }
 
         function renderChart(captures) {
@@ -635,6 +698,11 @@
             const desktopList = document.getElementById('desktop-list');
             const mobileList = document.getElementById('mobile-list');
 
+            let userPlan = 'free';
+            if (document.body.classList.contains('plan-gold')) userPlan = 'gold';
+            else if (document.body.classList.contains('plan-premium')) userPlan = 'premium';
+            else if (document.body.classList.contains('plan-basic')) userPlan = 'basic';
+
             desktopList.innerHTML = '';
             mobileList.innerHTML = '';
             document.getElementById('empty-msg').style.display = 'none';
@@ -646,13 +714,20 @@
 
             items.forEach(item => {
                 const dateStr = new Date(item.timestamp).toLocaleString();
-                const smartContent = generateSmartContent(item);
+                let contentHTML = '';
+
+                // Plan-based rendering
+                if (userPlan === 'free' || userPlan === 'basic') {
+                    contentHTML = `<pre class="raw-json">${escapeHtml(JSON.stringify(item, null, 2))}</pre>`;
+                } else {
+                    contentHTML = generateSmartContent(item, userPlan);
+                }
 
                 // Desktop Row
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
                     <td style="white-space:nowrap; color:var(--text-sec); font-size:0.85rem;">${dateStr}</td>
-                    <td>${smartContent}</td>
+                    <td>${contentHTML}</td>
                     <td><button onclick="deleteItem('${item.key}')" class="btn-delete">Delete</button></td>
                 `;
                 desktopList.appendChild(tr);
@@ -665,13 +740,13 @@
                         <span>${dateStr}</span>
                         <button onclick="deleteItem('${item.key}')" class="btn-delete">Delete</button>
                     </div>
-                    <div style="margin-top:10px;">${smartContent}</div>
+                    <div style="margin-top:10px;">${contentHTML}</div>
                 `;
                 mobileList.appendChild(card);
             });
         }
 
-        function generateSmartContent(item) {
+        function generateSmartContent(item, plan) {
             const data = item.data || {};
             const formData = data.formData || {};
             let url = data.url || 'Unknown';
@@ -680,22 +755,39 @@
             try {
                 const u = new URL(url);
                 domain = u.hostname;
-                url = u.pathname; // Just show path in secondary text
+                url = u.pathname;
             } catch(e) {}
 
             let fieldsHTML = '';
             const keys = Object.keys(formData);
+            const isGold = (plan === 'gold');
+            const hiddenFields = isGold ? getHiddenFields(domain) : [];
 
             if (keys.length === 0) {
                 fieldsHTML = '<div class="smart-field"><span class="smart-value" style="color:var(--text-sec); font-style:italic;">No form data captured</span></div>';
             } else {
                 for (const [key, value] of Object.entries(formData)) {
+                    if (isGold && hiddenFields.includes(key)) continue;
+
+                    let actionBtn = '';
+                    if (isGold) {
+                        actionBtn = `<button class="hide-btn" data-domain="${escapeHtml(domain)}" data-key="${escapeHtml(key)}">✕</button>`;
+                    }
+
                     fieldsHTML += `
                         <div class="smart-field">
+                            ${actionBtn}
                             <span class="smart-key">${escapeHtml(key)}</span>
                             <span class="smart-value">${escapeHtml(String(value))}</span>
                         </div>`;
                 }
+            }
+
+            let hiddenMsg = '';
+            if (isGold && hiddenFields.length > 0) {
+                 hiddenMsg = `<div style="margin-top:10px; font-size:0.75rem; color:var(--text-sec);">
+                    Hidden Fields: ${hiddenFields.length} <span class="restore-link" data-restore-domain="${escapeHtml(domain)}">Restore All</span>
+                 </div>`;
             }
 
             return `
@@ -704,8 +796,46 @@
                         <div><span class="domain-badge">${domain}</span> <span style="margin-left:8px; opacity:0.6; font-family:monospace;">${url}</span></div>
                     </div>
                     <div class="smart-grid">${fieldsHTML}</div>
+                    ${hiddenMsg}
                 </div>
             `;
+        }
+
+
+        // --- GOLD FEATURES ---
+        function getHiddenFields(domain) {
+            try {
+                const store = JSON.parse(localStorage.getItem('dtech_hidden_fields') || '{}');
+                return store[domain] || [];
+            } catch(e) { return []; }
+        }
+
+        function toggleFieldVisibility(domain, key, hide) {
+            try {
+                const store = JSON.parse(localStorage.getItem('dtech_hidden_fields') || '{}');
+                let fields = store[domain] || [];
+
+                if (hide) {
+                    if (!fields.includes(key)) fields.push(key);
+                } else {
+                    fields = fields.filter(k => k !== key);
+                }
+
+                store[domain] = fields;
+                localStorage.setItem('dtech_hidden_fields', JSON.stringify(store));
+                renderData(currentData); // Re-render to reflect changes
+            } catch(e) { console.error(e); }
+        }
+
+        function restoreHiddenFields(domain) {
+             try {
+                const store = JSON.parse(localStorage.getItem('dtech_hidden_fields') || '{}');
+                if (store[domain]) {
+                    delete store[domain];
+                    localStorage.setItem('dtech_hidden_fields', JSON.stringify(store));
+                    renderData(currentData);
+                }
+            } catch(e) { console.error(e); }
         }
 
         function escapeHtml(text) {
