@@ -574,23 +574,39 @@ async function handleGetPublicCaptures(request, env) {
     const keys = list.keys.reverse();
     const totalCount = keys.length;
 
-    let limit = 5;
-    if (user.plan === 'basic') limit = 15;
-    if (user.plan === 'premium') limit = 250;
-    if (user.plan === 'gold') limit = 100000;
+    // 1. Plan Limits (Total Visible Cap)
+    let planLimit = 5;
+    if (user.plan === 'basic') planLimit = 15;
+    if (user.plan === 'premium') planLimit = 250;
+    if (user.plan === 'gold') planLimit = 100000;
 
-    const visibleKeys = keys.slice(0, limit);
-    const hiddenCount = Math.max(0, totalCount - limit);
+    const visibleKeys = keys.slice(0, planLimit);
+    const hiddenCount = Math.max(0, totalCount - planLimit);
 
-    const promises = visibleKeys.map(async (k) => {
+    // 2. Pagination Logic
+    const page = parseInt(url.searchParams.get('page')) || 1;
+    const perPage = parseInt(url.searchParams.get('limit')) || 10;
+    const startIndex = (page - 1) * perPage;
+    const endIndex = startIndex + perPage;
+
+    const paginatedKeys = visibleKeys.slice(startIndex, endIndex);
+
+    const promises = paginatedKeys.map(async (k) => {
         const val = await env.SUBDOMAINS.get(k.name, { type: "json" });
         return { key: k.name, ...val };
     });
 
     const results = await Promise.all(promises);
+
     return new Response(JSON.stringify({
         success: true,
         data: results,
+        pagination: {
+            page: page,
+            perPage: perPage,
+            totalVisible: visibleKeys.length,
+            totalPages: Math.ceil(visibleKeys.length / perPage)
+        },
         total: totalCount,
         hidden: hiddenCount,
         plan: user.plan,
