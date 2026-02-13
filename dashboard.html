@@ -224,6 +224,47 @@
             text-decoration: underline;
             margin-left: 10px;
         }
+
+        /* Profile Modal Styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8);
+            z-index: 2000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(5px);
+        }
+        .modal-content {
+            background: var(--bg-card);
+            padding: 30px;
+            border-radius: var(--radius);
+            width: 90%;
+            max-width: 500px;
+            border: 1px solid var(--border);
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 10px; }
+        .modal-header h3 { margin: 0; color: var(--text-main); }
+        .close-btn { background: none; border: none; font-size: 1.5rem; color: var(--text-sec); cursor: pointer; }
+        .close-btn:hover { color: var(--text-main); }
+
+        .profile-section { margin-bottom: 25px; }
+        .profile-card { display: flex; align-items: center; gap: 15px; background: rgba(255,255,255,0.03); padding: 15px; border-radius: 8px; }
+        .profile-avatar { width: 50px; height: 50px; background: var(--accent); border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 1.5rem; color: white; }
+        .profile-info h4 { margin: 0 0 5px 0; font-size: 1.1rem; }
+
+        .profile-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 25px; }
+        .stat-box { background: rgba(0,0,0,0.2); padding: 10px; border-radius: 6px; text-align: center; border: 1px solid var(--border); }
+        .stat-box .label { display: block; font-size: 0.7rem; color: var(--text-sec); margin-bottom: 5px; text-transform: uppercase; }
+        .stat-box .value { font-weight: bold; font-size: 0.9rem; }
+
+        .activity-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        .activity-table th { text-align: left; color: var(--text-sec); padding: 8px; border-bottom: 1px solid var(--border); }
+        .activity-table td { padding: 8px; border-bottom: 1px solid var(--border); color: #ccc; }
     </style>
 </head>
 <body>
@@ -244,9 +285,69 @@
             <div class="logo">D-TECH <span>HUB</span></div>
             <div class="user-controls">
                 <span id="plan-badge" class="badge">LOADING</span>
+                <button onclick="showProfile()" class="btn-logout" style="border-color:var(--accent); color:var(--accent);">Profile</button>
                 <button onclick="logout()" class="btn-logout">Logout</button>
             </div>
         </header>
+
+        <!-- PROFILE MODAL -->
+        <div id="profile-modal" class="modal-overlay" style="display:none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Account Settings</h3>
+                    <button onclick="closeProfile()" class="close-btn">&times;</button>
+                </div>
+
+                <div class="profile-section">
+                    <div class="profile-card">
+                        <div class="profile-avatar">👤</div>
+                        <div class="profile-info">
+                            <h4 id="profile-username">Loading...</h4>
+                            <span id="profile-plan" class="badge">FREE</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="profile-grid">
+                    <div class="stat-box">
+                        <span class="label">Status</span>
+                        <span class="value" id="profile-status" style="color:var(--success);">Active</span>
+                    </div>
+                    <div class="stat-box">
+                        <span class="label">Expires</span>
+                        <span class="value" id="profile-expiry">Never</span>
+                    </div>
+                    <div class="stat-box">
+                        <span class="label">Sites</span>
+                        <span class="value" id="profile-sites">0 / 1</span>
+                    </div>
+                </div>
+
+                <div class="profile-section">
+                    <h4>Security Activity</h4>
+                    <div class="activity-log-wrapper">
+                        <table class="activity-table">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Action</th>
+                                    <th>IP Address</th>
+                                </tr>
+                            </thead>
+                            <tbody id="activity-list">
+                                <tr><td colspan="3" style="text-align:center; color:#666;">No activity recorded</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="profile-section" id="gold-settings" style="display:none;">
+                    <h4 style="color:var(--accent);">Gold Features</h4>
+                    <p style="font-size:0.8rem; color:#888;">Manage your dashboard preferences.</p>
+                    <button onclick="clearHiddenFields()" class="btn-action">Reset Hidden Fields</button>
+                </div>
+            </div>
+        </div>
 
         <div id="locked-msg" class="locked-banner">
             <h3>⛔ ACCOUNT LOCKED</h3>
@@ -410,6 +511,7 @@
         const WORKER_URL = 'https://calm-bread-1d99.testdx24.workers.dev';
         const userCode = localStorage.getItem('user_code');
         let currentData = [];
+        let currentUserData = null;
         let currentPage = 1;
         const itemsPerPage = 10;
         let totalPages = 1;
@@ -458,6 +560,7 @@
                 }
 
                 if (result.success) {
+                    currentUserData = result; // Store global user data
                     currentData = result.data;
                     const sites = result.sites || [];
 
@@ -1059,6 +1162,76 @@
             el.innerText = msg;
             el.className = `notification show ${type}`;
             setTimeout(() => el.className = 'notification', 3000);
+        }
+
+        // --- PROFILE MODAL LOGIC ---
+        function showProfile() {
+            if(!currentUserData) return;
+            const modal = document.getElementById('profile-modal');
+            modal.style.display = 'flex';
+
+            // Basic Info
+            document.getElementById('profile-username').innerText = currentUserData.username || 'User';
+            document.getElementById('profile-plan').innerText = (currentUserData.plan || 'free').toUpperCase();
+
+            // Status & Expiry
+            const expiry = currentUserData.expiry ? new Date(currentUserData.expiry).toLocaleDateString() : 'Never';
+            document.getElementById('profile-expiry').innerText = expiry;
+
+            let limit = 1;
+            if(currentUserData.plan === 'basic') limit = 3;
+            if(currentUserData.plan === 'premium') limit = 10;
+            if(currentUserData.plan === 'gold') limit = '∞';
+            document.getElementById('profile-sites').innerText = `${currentUserData.siteCount} / ${limit}`;
+
+            // Activity Log
+            const logs = currentUserData.activityLog || [];
+            const tbody = document.getElementById('activity-list');
+            tbody.innerHTML = '';
+
+            if(logs.length === 0) {
+                 tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; padding:15px; color:#666;">No recent activity</td></tr>';
+            } else {
+                logs.forEach(log => {
+                    const tr = document.createElement('tr');
+                    const d = new Date(log.timestamp);
+                    tr.innerHTML = `
+                        <td>${d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} <span style="color:#666; font-size:0.8em;">${d.toLocaleDateString()}</span></td>
+                        <td>${escapeHtml(log.action)}</td>
+                        <td style="font-family:monospace; color:#888;">${escapeHtml(log.ip)}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            }
+
+            // Gold Settings
+            const goldSection = document.getElementById('gold-settings');
+            if(currentUserData.plan === 'gold') {
+                goldSection.style.display = 'block';
+            } else {
+                goldSection.style.display = 'none';
+            }
+        }
+
+        function closeProfile() {
+            document.getElementById('profile-modal').style.display = 'none';
+        }
+
+        function clearHiddenFields() {
+            if(confirm("Are you sure you want to reset all hidden field preferences?")) {
+                localStorage.removeItem('dtech_hidden_fields');
+                notify("Preferences reset.", "success");
+                renderData(currentData); // Re-render
+                closeProfile();
+            }
+        }
+
+        // Close modal on click outside
+        window.onclick = function(event) {
+            const modal = document.getElementById('profile-modal');
+            if (event.target === modal) {
+                closeProfile();
+            }
         }
     </script>
 </body>

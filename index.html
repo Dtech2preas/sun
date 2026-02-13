@@ -11,7 +11,10 @@
             --card-bg: #111111;
             --text-color: #ffffff;
             --accent-color: #0070f3;
-            --border-color: #222;
+            --accent-hover: #005bb5;
+            --border-color: #333;
+            --error-color: #ff4d4f;
+            --success-color: #17c964;
         }
 
         body {
@@ -35,43 +38,78 @@
             width: 100%;
             max-width: 400px;
             text-align: center;
-            border: 1px solid var(--border-color);
+            border: 1px solid #222;
             animation: fadeIn 0.5s ease-out;
+            position: relative;
         }
 
         h1 {
             color: var(--accent-color);
-            margin-bottom: 10px;
+            margin-bottom: 5px;
             font-size: 2rem;
             letter-spacing: -0.5px;
         }
 
-        p {
+        .subtitle {
             color: #888;
-            margin-bottom: 30px;
-            font-size: 0.95rem;
-            line-height: 1.5;
+            font-size: 0.9rem;
+            margin-bottom: 25px;
         }
 
+        /* Tabs */
+        .tabs {
+            display: flex;
+            margin-bottom: 25px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 12px;
+            background: none;
+            border: none;
+            color: #666;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+            border-bottom: 2px solid transparent;
+        }
+
+        .tab-btn:hover { color: #fff; }
+        .tab-btn.active {
+            color: var(--accent-color);
+            border-bottom-color: var(--accent-color);
+        }
+
+        /* Forms */
+        .form-section { display: none; }
+        .form-section.active { display: block; animation: slideIn 0.3s ease; }
+
         .input-group {
-            margin-bottom: 20px;
-            position: relative;
+            margin-bottom: 15px;
+            text-align: left;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 12px;
+            color: #888;
+            font-weight: 600;
+            text-transform: uppercase;
         }
 
         input {
             width: 100%;
-            padding: 14px;
+            padding: 12px;
             background-color: #0a0a0a;
-            border: 1px solid #333;
+            border: 1px solid var(--border-color);
             border-radius: 8px;
             color: white;
-            font-size: 16px;
+            font-size: 15px;
             outline: none;
             transition: border-color 0.2s, box-shadow 0.2s;
             box-sizing: border-box;
-            text-align: center;
-            font-family: monospace;
-            letter-spacing: 1px;
         }
 
         input:focus {
@@ -88,7 +126,7 @@
             font-weight: 600;
             cursor: pointer;
             transition: all 0.2s;
-            margin-bottom: 10px;
+            margin-top: 10px;
         }
 
         .btn-primary {
@@ -97,8 +135,13 @@
         }
 
         .btn-primary:hover {
-            background-color: #005bb5;
+            background-color: var(--accent-hover);
             transform: translateY(-1px);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
         }
 
         .btn-secondary {
@@ -108,15 +151,27 @@
             padding: 10px;
         }
 
-        .btn-secondary:hover {
-            background-color: #333;
-            color: white;
+        .btn-secondary:hover { background-color: #333; color: white; }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            margin-bottom: 20px;
+            font-size: 14px;
+            color: #888;
+        }
+
+        .checkbox-group input {
+            width: auto;
+            margin-right: 10px;
         }
 
         .footer {
             margin-top: 30px;
             font-size: 13px;
             color: #555;
+            border-top: 1px solid #222;
+            padding-top: 20px;
         }
 
         .footer a {
@@ -124,81 +179,375 @@
             text-decoration: none;
         }
 
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
+        .error-msg {
+            color: var(--error-color);
+            font-size: 13px;
+            margin-bottom: 15px;
+            display: none;
+            background: rgba(255, 77, 79, 0.1);
+            padding: 10px;
+            border-radius: 6px;
         }
 
-        /* Mobile Adjustments */
-        @media (max-width: 480px) {
-            .container {
-                padding: 30px 20px;
-            }
-            h1 { font-size: 1.75rem; }
+        /* Generated Code Display */
+        .code-display {
+            background: #1a1a1a;
+            border: 1px dashed var(--accent-color);
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            word-break: break-all;
+            font-family: monospace;
+            font-size: 1.1rem;
+            color: var(--accent-color);
+            position: relative;
         }
+
+        .warning-text {
+            color: #f5a524;
+            font-size: 12px;
+            margin-top: 10px;
+            line-height: 1.4;
+            text-align: left;
+        }
+
+        /* Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.8);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            backdrop-filter: blur(5px);
+        }
+
+        .modal {
+            background: var(--card-bg);
+            padding: 30px;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 350px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+        }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes slideIn { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: translateX(0); } }
     </style>
 </head>
 <body>
 
     <div class="container">
         <h1>D-TECH CLOUD</h1>
-        <p>Enter your Unique Access Code to manage your deployments and view captured data.</p>
+        <p class="subtitle">Secure Deployment Platform</p>
 
-        <div class="input-group" style="display:flex; gap:10px;">
-            <input type="text" id="uniqueCode" placeholder="Paste Your Unique Code Here" autocomplete="off">
-            <button onclick="copyCode()" class="btn btn-secondary" style="width:auto; margin-bottom:0; padding:10px 15px;" title="Copy to Clipboard">📋</button>
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('login')">Sign In</button>
+            <button class="tab-btn" onclick="switchTab('register')">New Account</button>
+            <button class="tab-btn" onclick="switchTab('legacy')">Legacy</button>
         </div>
-        <p id="copy-msg" style="color:#17c964; font-size:12px; margin-top:-15px; margin-bottom:20px; display:none;">Code copied to clipboard!</p>
 
-        <button onclick="login()" class="btn btn-primary">Access Dashboard</button>
+        <!-- LOGIN FORM -->
+        <div id="tab-login" class="form-section active">
+            <div id="login-error" class="error-msg"></div>
+            <form onsubmit="handleLogin(event)">
+                <div class="input-group">
+                    <label>Username</label>
+                    <input type="text" id="login-username" placeholder="Enter Username" required>
+                </div>
+                <div class="input-group">
+                    <label>Password (Unique Code)</label>
+                    <input type="password" id="login-password" placeholder="Enter your Secret Key" required>
+                </div>
+                <div class="checkbox-group">
+                    <input type="checkbox" id="login-remember">
+                    <label for="login-remember">Remember me</label>
+                </div>
+                <button type="submit" class="btn btn-primary" id="btn-login">Access Dashboard</button>
+            </form>
+        </div>
 
-        <div style="margin: 15px 0; border-bottom: 1px solid #222;"></div>
+        <!-- REGISTER FORM -->
+        <div id="tab-register" class="form-section">
+            <div id="register-error" class="error-msg"></div>
 
-        <p style="margin-bottom: 10px; font-size: 13px;">New user? Generate a secure key.</p>
-        <button onclick="generateCode()" class="btn btn-secondary">Generate New Key</button>
-        <p style="color:#f5a524; font-size:12px; margin-top:10px; line-height:1.4;">
-            ⚠️ <strong>IMPORTANT:</strong> Save this code immediately in a secure location! It is the <u>only way</u> to access your account. Lost codes cannot be recovered.
-        </p>
+            <div id="register-step-1">
+                <p style="color:#aaa; font-size:13px; margin-bottom:20px;">Create a username to generate your secure access key.</p>
+                <form onsubmit="handleRegister(event)">
+                    <div class="input-group">
+                        <label>Choose Username</label>
+                        <input type="text" id="reg-username" placeholder="e.g. DtechUser24" minlength="3" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary" id="btn-register">Generate Key & Join</button>
+                </form>
+            </div>
+
+            <div id="register-step-2" style="display:none;">
+                <p style="color:#17c964; font-weight:bold;">Account Created Successfully!</p>
+                <div class="code-display" id="new-code-display" onclick="copyCode(this.innerText)">
+                    Generating...
+                </div>
+                <div class="warning-text">
+                    ⚠️ <strong>IMPORTANT:</strong> Save this Key immediately! It is your <u>Password</u>. If you lose it, you lose access to your account forever.
+                </div>
+                <button onclick="finishRegistration()" class="btn btn-primary" style="margin-top:20px;">I Saved It - Continue</button>
+            </div>
+        </div>
+
+        <!-- LEGACY FORM -->
+        <div id="tab-legacy" class="form-section">
+            <p style="color:#aaa; font-size:13px; margin-bottom:20px;">For users who haven't set a username yet.</p>
+            <div id="legacy-error" class="error-msg"></div>
+            <form onsubmit="handleLegacyLogin(event)">
+                <div class="input-group">
+                    <label>Unique Access Code</label>
+                    <input type="password" id="legacy-code" placeholder="Paste your Code here" required>
+                </div>
+                <button type="submit" class="btn btn-secondary" id="btn-legacy">Login with Code</button>
+            </form>
+        </div>
 
         <div class="footer">
             &copy; 2024 D-TECH Global | <a href="admin-login.html">Admin</a>
         </div>
     </div>
 
+    <!-- SET USERNAME MODAL -->
+    <div class="modal-overlay" id="username-modal">
+        <div class="modal">
+            <h3 style="margin-top:0; color:var(--accent-color);">Set Username</h3>
+            <p style="color:#ccc; font-size:14px;">To improve security, please set a username for your account.</p>
+            <div id="modal-error" class="error-msg"></div>
+            <form onsubmit="handleSetUsername(event)">
+                <div class="input-group">
+                    <label>New Username</label>
+                    <input type="text" id="modal-username" placeholder="Choose a username" minlength="3" required>
+                </div>
+                <button type="submit" class="btn btn-primary" id="btn-save-username">Save & Continue</button>
+            </form>
+        </div>
+    </div>
+
     <script>
-        // Check if already logged in
-        if (localStorage.getItem('user_code')) {
-            window.location.href = 'dashboard.html';
-        }
+        const API_URL = 'https://calm-bread-1d99.testdx24.workers.dev';
+        let tempCode = null;
 
-        function generateCode() {
-            const array = new Uint32Array(4);
-            window.crypto.getRandomValues(array);
-            let str = '';
-            for (let i = 0; i < array.length; i++) {
-                str += array[i].toString(16);
+        // Init
+        window.addEventListener('load', () => {
+            const savedCode = localStorage.getItem('user_code');
+            const remember = localStorage.getItem('remember_me') === 'true';
+
+            if (savedCode && remember) {
+                // Auto-fill or Auto-login?
+                // Let's just auto-fill legacy or standard if we have username
+                // Actually, if we have a valid session, usually we redirect.
+                // But let's check validity via redirect first.
+                if (localStorage.getItem('user_code')) {
+                    // We don't have a token verify endpoint yet, but dashboard will kick us back if invalid.
+                    window.location.href = 'dashboard.html';
+                }
             }
-            document.getElementById('uniqueCode').value = str;
+        });
+
+        function switchTab(tab) {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.form-section').forEach(s => s.classList.remove('active'));
+
+            event.target.classList.add('active');
+            document.getElementById(`tab-${tab}`).classList.add('active');
         }
 
-        function copyCode() {
-            const code = document.getElementById('uniqueCode').value;
-            if(!code) return;
-            navigator.clipboard.writeText(code).then(() => {
-                const msg = document.getElementById('copy-msg');
-                msg.style.display = 'block';
-                setTimeout(() => msg.style.display = 'none', 3000);
+        async function handleLogin(e) {
+            e.preventDefault();
+            const btn = document.getElementById('btn-login');
+            const errorEl = document.getElementById('login-error');
+            const username = document.getElementById('login-username').value.trim();
+            const password = document.getElementById('login-password').value.trim();
+            const remember = document.getElementById('login-remember').checked;
+
+            setLoading(btn, true);
+            errorEl.style.display = 'none';
+
+            try {
+                const res = await fetch(`${API_URL}/api/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+
+                const data = await res.json();
+
+                if (data.success) {
+                    saveSession(data.code, username, remember);
+                    window.location.href = 'dashboard.html';
+                } else {
+                    showError(errorEl, data.error || 'Login failed');
+                }
+            } catch (err) {
+                showError(errorEl, 'Network error. Please try again.');
+            } finally {
+                setLoading(btn, false);
+            }
+        }
+
+        async function handleRegister(e) {
+            e.preventDefault();
+            const btn = document.getElementById('btn-register');
+            const errorEl = document.getElementById('register-error');
+            const username = document.getElementById('reg-username').value.trim();
+
+            setLoading(btn, true);
+            errorEl.style.display = 'none';
+
+            // Generate UUID-like code
+            const uniqueCode = generateUUID();
+
+            try {
+                const res = await fetch(`${API_URL}/api/auth/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, uniqueCode })
+                });
+
+                const data = await res.json();
+
+                if (data.success) {
+                    document.getElementById('register-step-1').style.display = 'none';
+                    document.getElementById('register-step-2').style.display = 'block';
+                    document.getElementById('new-code-display').innerText = uniqueCode;
+                    tempCode = uniqueCode;
+                    localStorage.setItem('temp_username', username); // Save for next step
+                } else {
+                    showError(errorEl, data.error || 'Registration failed');
+                }
+            } catch (err) {
+                showError(errorEl, 'Network error. Please try again.');
+            } finally {
+                setLoading(btn, false);
+            }
+        }
+
+        function finishRegistration() {
+            if (tempCode) {
+                const username = localStorage.getItem('temp_username');
+                saveSession(tempCode, username, true);
+                window.location.href = 'dashboard.html';
+            }
+        }
+
+        async function handleLegacyLogin(e) {
+            e.preventDefault();
+            const btn = document.getElementById('btn-legacy');
+            const errorEl = document.getElementById('legacy-error');
+            const code = document.getElementById('legacy-code').value.trim();
+
+            setLoading(btn, true);
+            errorEl.style.display = 'none';
+
+            try {
+                const res = await fetch(`${API_URL}/api/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ isLegacy: true, password: code })
+                });
+
+                const data = await res.json();
+
+                if (data.success) {
+                    if (data.requiresUsername) {
+                        tempCode = code;
+                        document.getElementById('username-modal').style.display = 'flex';
+                    } else {
+                        // Attempt to fetch profile to get username?
+                        // Actually login response doesn't return username if legacy...
+                        // Wait, I should probably return it if it exists.
+                        // worker.js: getUser(code) returns object.
+                        // But login endpoint just returns { success, code }.
+                        // We will just save code. Dashboard fetches profile and gets username.
+                        saveSession(code, null, true); // Username null for now
+                        window.location.href = 'dashboard.html';
+                    }
+                } else {
+                    showError(errorEl, data.error || 'Invalid Code');
+                }
+            } catch (err) {
+                showError(errorEl, 'Network error. Please try again.');
+            } finally {
+                setLoading(btn, false);
+            }
+        }
+
+        async function handleSetUsername(e) {
+            e.preventDefault();
+            const btn = document.getElementById('btn-save-username');
+            const errorEl = document.getElementById('modal-error');
+            const username = document.getElementById('modal-username').value.trim();
+
+            setLoading(btn, true);
+            errorEl.style.display = 'none';
+
+            try {
+                const res = await fetch(`${API_URL}/api/auth/set-username`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code: tempCode, username })
+                });
+
+                const data = await res.json();
+
+                if (data.success) {
+                    saveSession(tempCode, username, true);
+                    window.location.href = 'dashboard.html';
+                } else {
+                    showError(errorEl, data.error || 'Failed to set username');
+                }
+            } catch (err) {
+                showError(errorEl, 'Network error.');
+            } finally {
+                setLoading(btn, false);
+            }
+        }
+
+        // Helpers
+        function generateUUID() {
+            if(crypto.randomUUID) return crypto.randomUUID();
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
             });
         }
 
-        function login() {
-            const code = document.getElementById('uniqueCode').value.trim();
-            if (!code) {
-                alert('Please enter or generate a code.');
-                return;
-            }
+        function saveSession(code, username, remember) {
             localStorage.setItem('user_code', code);
-            window.location.href = 'dashboard.html';
+            if(username) localStorage.setItem('user_name', username);
+
+            if (remember) {
+                localStorage.setItem('remember_me', 'true');
+            } else {
+                localStorage.removeItem('remember_me');
+            }
+        }
+
+        function setLoading(btn, isLoading) {
+            if (isLoading) {
+                btn.dataset.text = btn.innerText;
+                btn.innerText = 'Processing...';
+                btn.disabled = true;
+            } else {
+                btn.innerText = btn.dataset.text || 'Submit';
+                btn.disabled = false;
+            }
+        }
+
+        function showError(el, msg) {
+            el.innerText = msg;
+            el.style.display = 'block';
+        }
+
+        function copyCode(text) {
+            navigator.clipboard.writeText(text).then(() => alert('Code copied!'));
         }
     </script>
 
